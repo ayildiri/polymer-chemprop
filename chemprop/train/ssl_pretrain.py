@@ -12,7 +12,7 @@ import torch.optim as optim
 
 # ✅ Correct imports from Chemprop
 from chemprop.data import MoleculeDatapoint, MoleculeDataset
-from chemprop.features import BatchMolGraph
+from chemprop.features import BatchMolGraph, MolGraph
 from chemprop.models.mpn import MPN  # ✅ wD-MPNN encoder
 
 
