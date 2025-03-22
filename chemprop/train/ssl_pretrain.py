@@ -11,6 +11,7 @@ from chemprop.nn_utils import param_count
 from chemprop.utils import load_args, load_checkpoint
 from chemprop.data.utils import get_data_from_smiles
 from chemprop.data import MoleculeDataset
+from chemprop.data.data import molecule_collate_fn
 
 # ----------- SSL-specific modules -------------
 class SSLHead(nn.Module):
@@ -56,7 +57,13 @@ def main():
         skip_invalid_smiles=True,
         features_generator=None
     )
-    data_loader = DataLoader(data, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
+    data_loader = DataLoader(
+    data,
+    batch_size=args.batch_size,
+    shuffle=True,
+    num_workers=args.num_workers,
+    collate_fn=molecule_collate_fn   # ✅ This tells PyTorch how to handle MoleculeDatapoint objects
+    )
 
     # Initialize model and SSL heads
     model = MoleculeModel(args).to(args.device)
