@@ -42,7 +42,13 @@ def main():
     os.makedirs(args.save_dir, exist_ok=True)
 
     # Load dataset from CSV
-    data = get_data(path=args.data_path, args=args)
+    data = get_data_from_smiles(
+        path=args.data_path,
+        smiles_columns=args.smiles_columns,
+        target_columns=None,        # ⬅️ Critical: no targets
+        ignore_columns=[],
+        args=args
+    )
     data_loader = DataLoader(data, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
 
     # Initialize model and SSL heads
