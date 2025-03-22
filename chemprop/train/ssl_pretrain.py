@@ -55,6 +55,7 @@ def main():
         features_generator=None
     )
 
+    data = MoleculeDataset(data)  # ✅ Wrap in MoleculeDataset
     data_loader = DataLoader(data, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
 
     # -------------------------------
