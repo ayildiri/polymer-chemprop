@@ -98,7 +98,14 @@ def main():
             mol_batch = batch.batch_graph()[0]
             # Move batch tensors to GPU if using CUDA
             if args.device.type == 'cuda':
-                mol_batch.cuda()
+                # Move tensor attributes of mol_batch to the target device
+                mol_batch.f_atoms = mol_batch.f_atoms.to(args.device)
+                mol_batch.f_bonds = mol_batch.f_bonds.to(args.device)
+                mol_batch.a2b = [a.to(args.device) for a in mol_batch.a2b]
+                mol_batch.b2a = mol_batch.b2a.to(args.device)
+                mol_batch.b2revb = mol_batch.b2revb.to(args.device)
+                mol_batch.a_scope = mol_batch.a_scope  # list of tuples, no need to move
+                mol_batch.b_scope = mol_batch.b_scope  # same
 
             atom_feats = mol_batch.f_atoms
             bond_feats = mol_batch.f_bonds
