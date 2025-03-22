@@ -94,7 +94,7 @@ def main():
     model.train()
 
     for epoch in range(args.epochs):
-    epoch_loss = 0
+        epoch_loss = 0
     for batch in tqdm(data_loader, desc=f'Epoch {epoch + 1}/{args.epochs}'):
         mol_batch = batch.batch_graph()[0].to(args.device)  # ✅ FIXED
 
