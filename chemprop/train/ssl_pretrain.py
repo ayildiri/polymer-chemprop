@@ -10,9 +10,11 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-# Import Chemprop model components
-from chemprop.data import MoleculeDatapoint, MoleculeDataset, BatchMolGraph, MolGraph
-from chemprop.nn import MessagePassing  # Chemprop's message passing (wD-MPNN) module
+# ✅ Correct imports from Chemprop
+from chemprop.data import MoleculeDatapoint, MoleculeDataset
+from chemprop.features import BatchMolGraph  # ✅ BatchMolGraph is in `features`
+from chemprop.nn import MessagePassing  # ✅ wD-MPNN module (already correct)
+
 
 class SSLPretrainModel(nn.Module):
     """Chemprop-based GNN with separate heads for node, edge, and graph tasks."""
