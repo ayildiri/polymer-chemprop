@@ -92,37 +92,39 @@ def main():
     print(f"🧠 Total model parameters: {param_count(model):,}\n")
 
     model.train()
+
     for epoch in range(args.epochs):
-        epoch_loss = 0
-        for batch in tqdm(data_loader, desc=f'Epoch {epoch + 1}/{args.epochs}'):
-            mol_graph = batch.batch_graph().to(args.device)
-            
-            atom_feats = mol_batch.f_atoms
-            bond_feats = mol_batch.f_bonds
+    epoch_loss = 0
+    for batch in tqdm(data_loader, desc=f'Epoch {epoch + 1}/{args.epochs}'):
+        mol_batch = batch.batch_graph()[0].to(args.device)  # ✅ FIXED
 
-            # Encode with wD-MPNN
-            atom_repr = model.encoder.encoder[0](mol_batch)
+        atom_feats = mol_batch.f_atoms
+        bond_feats = mol_batch.f_bonds
 
-            # Mask features
-            masked_atoms, atom_mask = random_mask(atom_feats, mask_rate=0.15)
-            masked_bonds, bond_mask = random_mask(bond_feats, mask_rate=0.15)
+        # Encode with wD-MPNN
+        atom_repr = model.encoder.encoder[0](mol_batch)
 
-            # Predict masked features
-            atom_preds = ssl_atom_head(atom_repr)
-            bond_preds = ssl_bond_head(atom_repr)
+        # Mask features
+        masked_atoms, atom_mask = random_mask(atom_feats, mask_rate=0.15)
+        masked_bonds, bond_mask = random_mask(bond_feats, mask_rate=0.15)
 
-            # Compute loss only on masked entries
-            atom_loss = loss_fn(atom_preds[atom_mask], atom_feats[atom_mask]) if atom_mask.any() else 0
-            bond_loss = loss_fn(bond_preds[bond_mask], bond_feats[bond_mask]) if bond_mask.any() else 0
-            loss = atom_loss + bond_loss
+        # Predict masked features
+        atom_preds = ssl_atom_head(atom_repr)
+        bond_preds = ssl_bond_head(atom_repr)
 
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
+        # Compute loss only on masked entries
+        atom_loss = loss_fn(atom_preds[atom_mask], atom_feats[atom_mask]) if atom_mask.any() else 0
+        bond_loss = loss_fn(bond_preds[bond_mask], bond_feats[bond_mask]) if bond_mask.any() else 0
+        loss = atom_loss + bond_loss
 
-            epoch_loss += loss.item()
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
 
-        print(f'✅ Epoch {epoch + 1} completed. Avg Loss: {epoch_loss / len(data_loader):.4f}')
+        epoch_loss += loss.item()
+
+    print(f'✅ Epoch {epoch + 1} completed. Avg Loss: {epoch_loss / len(data_loader):.4f}')
+
 
     # Save model
     checkpoint_path = os.path.join(args.save_dir, 'ssl_pretrained_model.pt')
