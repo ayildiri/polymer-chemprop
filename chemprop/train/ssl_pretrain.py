@@ -47,7 +47,17 @@ def main():
 
     # Load dataset from CSV
 
-    data = get_data_from_smiles(args=args)
+    # Load SMILES from CSV
+    df = pd.read_csv(args.data_path)
+    
+    # Extract SMILES column into a list of list-of-strings (Chemprop format)
+    smiles = [[s] for s in df[args.smiles_columns].values]
+    
+    # Create MoleculeDataset using Chemprop's utility
+    data = get_data_from_smiles(
+        smiles=smiles,
+        skip_invalid_smiles=True,
+        features_generator=None
     
     data_loader = DataLoader(data, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
 
