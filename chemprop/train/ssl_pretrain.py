@@ -5,9 +5,11 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from chemprop.args import TrainArgs
-from chemprop.data import get_data
 from chemprop.models import MoleculeModel
 from chemprop.nn_utils import param_count
+from chemprop.utils import load_args, load_checkpoint
+from chemprop.data.utils import get_data_from_smiles  # ✅ ADD THIS
+
 
 
 # ----------- SSL-specific modules -------------
