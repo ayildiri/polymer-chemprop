@@ -51,7 +51,13 @@ def main():
         '--polymer'
     ])
     args.device = device
-    data = get_data(args)
+    data = get_data_from_smiles(
+    path=args.data_path,
+    smiles_columns=args.smiles_columns,
+    target_columns=None,
+    ignore_columns=[],
+    args=args
+    )
     data_loader = DataLoader(data, batch_size=batch_size, shuffle=True)
 
     # Initialize model and SSL head
