@@ -49,7 +49,7 @@ def main():
 
     # Load SMILES from CSV
     df = pd.read_csv(args.data_path)
-    smiles = [[str(s)] for s in df[args.smiles_columns].tolist()]
+    smiles = [[str(s)] for s in df[args.smiles_columns[0]].tolist()]
     
     # Create MoleculeDataset using Chemprop's utility
     data = get_data_from_smiles(
