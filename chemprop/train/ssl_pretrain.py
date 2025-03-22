@@ -13,6 +13,13 @@ from chemprop.data.utils import get_data_from_smiles
 from chemprop.data import MoleculeDataset
 from chemprop.data.data import molecule_collate_fn
 
+
+# ----------- Custom collate_fn for MoleculeDatapoint ----------
+def molecule_collate_fn(batch):
+    """Collate function to wrap MoleculeDatapoints into a MoleculeDataset"""
+    from chemprop.data import MoleculeDataset
+    return MoleculeDataset(batch)
+
 # ----------- SSL-specific modules -------------
 class SSLHead(nn.Module):
     def __init__(self, hidden_size, output_size):
