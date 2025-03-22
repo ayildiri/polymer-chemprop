@@ -50,9 +50,9 @@ def main():
     df = pd.read_csv(args.data_path)
 
     data = get_data_from_smiles(
-        path=args.data_path,
+        smiles_data=df,
         smiles_columns=args.smiles_columns,
-        target_columns=[],       
+        target_columns=[],  # No property targets in SSL
         ignore_columns=[],
         args=args
     )
