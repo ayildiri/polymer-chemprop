@@ -11,7 +11,6 @@ from chemprop.nn_utils import param_count
 from chemprop.utils import load_args, load_checkpoint
 from chemprop.data.utils import get_data_from_smiles
 from chemprop.data import MoleculeDataset
-from chemprop.data.data import molecule_collate_fn
 
 
 # ----------- Custom collate_fn for MoleculeDatapoint ----------
