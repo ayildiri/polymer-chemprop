@@ -13,7 +13,7 @@ import torch.optim as optim
 # ✅ Correct imports from Chemprop
 from chemprop.data import MoleculeDatapoint, MoleculeDataset
 from chemprop.features import BatchMolGraph
-from chemprop.models.mpn import MessagePassing  # ✅ wD-MPNN encoder
+from chemprop.models.mpn import MPN  # ✅ wD-MPNN encoder
 
 
 
@@ -22,7 +22,7 @@ class SSLPretrainModel(nn.Module):
     def __init__(self, hidden_size: int, atom_feat_size: int, bond_feat_size: int):
         super(SSLPretrainModel, self).__init__()
         # Message passing encoder (wD-MPNN) from Chemprop
-        self.encoder = MessagePassing(hidden_size=hidden_size)  # uses default depth & chemprop settings
+        self.encoder = MPN (hidden_size=hidden_size)  # uses default depth & chemprop settings
         # Prediction heads
         self.node_head = nn.Linear(hidden_size, atom_feat_size)         # node feature reconstruction
         self.edge_head = nn.Linear(hidden_size, bond_feat_size)         # bond feature reconstruction
