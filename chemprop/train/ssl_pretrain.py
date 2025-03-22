@@ -5,9 +5,10 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from chemprop.args import TrainArgs
-from chemprop.data import get_data_from_smiles
+from chemprop.data import get_data
 from chemprop.models import MoleculeModel
 from chemprop.nn_utils import param_count
+
 
 # ----------- SSL-specific modules -------------
 class SSLHead(nn.Module):
@@ -22,57 +23,36 @@ class SSLHead(nn.Module):
     def forward(self, x):
         return self.predictor(x)
 
+
 # ----------- Masking Utilities -----------------
 def random_mask(tensor, mask_rate):
     """Randomly masks part of a tensor by zeroing."""
-    mask = torch.rand_like(tensor[:, 0]) < mask_rate
+    mask = torch.rand(tensor.size(0), device=tensor.device) < mask_rate
     masked_tensor = tensor.clone()
     masked_tensor[mask] = 0.0
     return masked_tensor, mask
 
+
 # ----------- Main SSL Pretraining Script -------
 def main():
-    # Setup
-    data_path = '/content/drive/MyDrive/AI_MSE_Company/poly_chemprop_input_with_Xn.csv'
-    save_path = '/content/drive/MyDrive/AI_MSE_Company/ssl_checkpoints/ssl_pretrained_model.pt'
-    smiles_column = 'poly_chemprop_input'
-    batch_size = 32
-    epochs = 10
-    mask_rate = 0.15
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    # Parse training arguments
+    args = TrainArgs().parse_args()
+    args.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # Load args manually from list
-    args = TrainArgs().parse_args([
-        '--data_path', data_path,
-        '--dataset_type', 'regression',
-        '--smiles_columns', smiles_column,
-        '--save_dir', '/content/drive/MyDrive/AI_MSE_Company/ssl_checkpoints',
-        '--polymer',
-        '--epochs', str(epochs),
-        '--batch_size', str(batch_size),
-        '--num_workers', '2',
-        '--save_smiles_splits'
-    ])
-    args.device = device
+    os.makedirs(args.save_dir, exist_ok=True)
 
-    # Load dataset (no target columns for SSL)
-    data = get_data_from_smiles(
-        path=args.data_path,
-        smiles_columns=args.smiles_columns,
-        target_columns=None,
-        ignore_columns=[],
-        args=args
-    )
-
+    # Load dataset from CSV
+    data = get_data(args)
     data_loader = DataLoader(data, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
 
     # Initialize model and SSL heads
-    model = MoleculeModel(args).to(device)
+    model = MoleculeModel(args).to(args.device)
     hidden_size = args.hidden_size
     atom_fdim = model.encoder.encoder[0].atom_fdim
     bond_fdim = model.encoder.encoder[0].bond_fdim
-    ssl_atom_head = SSLHead(hidden_size, atom_fdim).to(device)
-    ssl_bond_head = SSLHead(hidden_size, bond_fdim).to(device)
+    
+    ssl_atom_head = SSLHead(hidden_size, atom_fdim).to(args.device)
+    ssl_bond_head = SSLHead(hidden_size, bond_fdim).to(args.device)
 
     optimizer = torch.optim.Adam(
         list(model.parameters()) + list(ssl_atom_head.parameters()) + list(ssl_bond_head.parameters()),
@@ -80,30 +60,29 @@ def main():
     )
     loss_fn = nn.MSELoss()
 
-    print(f"\n🔧 Starting SSL pretraining for {epochs} epochs")
-    print(f"🧠 Total parameters in model: {param_count(model):,}\n")
+    print(f"\n🔧 Starting SSL pretraining for {args.epochs} epochs")
+    print(f"🧠 Total model parameters: {param_count(model):,}\n")
 
-    # Pretraining loop
     model.train()
-    for epoch in range(epochs):
+    for epoch in range(args.epochs):
         epoch_loss = 0
-        for batch in tqdm(data_loader, desc=f'Epoch {epoch+1}/{epochs}'):
-            mol_batch = batch.batch_graph()[0].to(device)
+        for batch in tqdm(data_loader, desc=f'Epoch {epoch + 1}/{args.epochs}'):
+            mol_batch = batch.batch_graph()[0].to(args.device)
             atom_feats = mol_batch.f_atoms
             bond_feats = mol_batch.f_bonds
 
             # Encode with wD-MPNN
             atom_repr = model.encoder.encoder[0](mol_batch)
 
-            # Mask node and edge features
-            masked_atoms, atom_mask = random_mask(atom_feats, mask_rate)
-            masked_bonds, bond_mask = random_mask(bond_feats, mask_rate)
+            # Mask features
+            masked_atoms, atom_mask = random_mask(atom_feats, mask_rate=0.15)
+            masked_bonds, bond_mask = random_mask(bond_feats, mask_rate=0.15)
 
-            # SSL Head prediction
+            # Predict masked features
             atom_preds = ssl_atom_head(atom_repr)
             bond_preds = ssl_bond_head(atom_repr)
 
-            # Loss (only masked positions)
+            # Compute loss only on masked entries
             atom_loss = loss_fn(atom_preds[atom_mask], atom_feats[atom_mask]) if atom_mask.any() else 0
             bond_loss = loss_fn(bond_preds[bond_mask], bond_feats[bond_mask]) if bond_mask.any() else 0
             loss = atom_loss + bond_loss
@@ -114,12 +93,13 @@ def main():
 
             epoch_loss += loss.item()
 
-        print(f'✅ Epoch {epoch+1} complete - Avg Loss: {epoch_loss / len(data_loader):.4f}')
+        print(f'✅ Epoch {epoch + 1} completed. Avg Loss: {epoch_loss / len(data_loader):.4f}')
 
-    # Save model checkpoint
-    os.makedirs(os.path.dirname(save_path), exist_ok=True)
-    torch.save(model.state_dict(), save_path)
-    print(f"\n💾 Pretrained model saved to: {save_path}")
+    # Save model
+    checkpoint_path = os.path.join(args.save_dir, 'ssl_pretrained_model.pt')
+    torch.save(model.state_dict(), checkpoint_path)
+    print(f"\n💾 Pretrained model saved to {checkpoint_path}")
+
 
 if __name__ == '__main__':
     main()
