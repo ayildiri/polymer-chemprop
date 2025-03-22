@@ -58,7 +58,7 @@ def main():
         smiles=smiles,
         skip_invalid_smiles=True,
         features_generator=None
-    
+    )
     data_loader = DataLoader(data, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
 
     # Initialize model and SSL heads
