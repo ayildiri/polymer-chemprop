@@ -64,13 +64,15 @@ def main():
         skip_invalid_smiles=True,
         features_generator=None
     )
+
     data_loader = DataLoader(
     data,
     batch_size=args.batch_size,
     shuffle=True,
     num_workers=args.num_workers,
-    collate_fn=molecule_collate_fn   # ✅ This tells PyTorch how to handle MoleculeDatapoint objects
+    collate_fn=molecule_collate_fn  # ✅ This fixes the collate error!
     )
+
 
     # Initialize model and SSL heads
     model = MoleculeModel(args).to(args.device)
