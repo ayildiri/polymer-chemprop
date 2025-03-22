@@ -42,7 +42,7 @@ def main():
     os.makedirs(args.save_dir, exist_ok=True)
 
     # Load dataset from CSV
-    data = get_data(args)
+    data = get_data(path=args.data_path, args=args)
     data_loader = DataLoader(data, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
 
     # Initialize model and SSL heads
