@@ -47,15 +47,7 @@ def main():
 
     # Load dataset from CSV
 
-    df = pd.read_csv(args.data_path)
-
-    data = get_data_from_smiles(
-        smiles_data=df,
-        smiles_columns=args.smiles_columns,
-        target_columns=[],  # No property targets in SSL
-        ignore_columns=[],
-        args=args
-    )
+    data = get_data_from_smiles(args=args)
     
     data_loader = DataLoader(data, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
 
