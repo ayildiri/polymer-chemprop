@@ -95,8 +95,8 @@ def main():
     for epoch in range(args.epochs):
         epoch_loss = 0
         for batch in tqdm(data_loader, desc=f'Epoch {epoch + 1}/{args.epochs}'):
-           
-            # Move tensor attributes of mol_batch to the target device
+            mol_batch = batch.batch_graph()[0]
+            
             mol_batch.f_atoms = mol_batch.f_atoms.to(args.device)
             mol_batch.f_bonds = mol_batch.f_bonds.to(args.device)
             mol_batch.a2b = [a.to(args.device) for a in mol_batch.a2b]
