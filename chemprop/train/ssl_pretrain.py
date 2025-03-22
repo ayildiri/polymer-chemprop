@@ -8,7 +8,9 @@ from tqdm import tqdm
 from chemprop.args import TrainArgs
 from chemprop.models import MoleculeModel
 from chemprop.nn_utils import param_count
+from chemprop.utils import load_args, load_checkpoint
 from chemprop.data.utils import get_data_from_smiles
+from chemprop.data import MoleculeDataset  
 
 # ----------- SSL-specific modules -------------
 class SSLHead(nn.Module):
