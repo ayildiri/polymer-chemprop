@@ -96,7 +96,9 @@ def main():
         epoch_loss = 0
         for batch in tqdm(data_loader, desc=f'Epoch {epoch + 1}/{args.epochs}'):
             mol_batch = batch.batch_graph()[0]
-            mol_batch.to(args.device)  # ✅ moves all internal tensors to CUDA
+            # Move batch tensors to GPU if using CUDA
+            if args.device.type == 'cuda':
+                mol_batch.cuda()
 
             atom_feats = mol_batch.f_atoms
             bond_feats = mol_batch.f_bonds
