@@ -12,8 +12,9 @@ import torch.optim as optim
 
 # ✅ Correct imports from Chemprop
 from chemprop.data import MoleculeDatapoint, MoleculeDataset
-from chemprop.features import BatchMolGraph  # ✅ BatchMolGraph is in `features`
-from chemprop.nn import MessagePassing  # ✅ wD-MPNN module (already correct)
+from chemprop.features import BatchMolGraph
+from chemprop.models.mpn import MessagePassing  # ✅ wD-MPNN encoder
+
 
 
 class SSLPretrainModel(nn.Module):
