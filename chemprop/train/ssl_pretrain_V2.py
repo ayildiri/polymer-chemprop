@@ -337,7 +337,7 @@ def build_polymer_graph(smiles):
             graph.b2rev[e_index] = rev_index
             graph.b2rev[rev_index] = e_index
     
-    graph.smiles = Chem.MolToSmiles(ensemble_mol)
+    graph.smiles = smiles
     return graph
 
 def main():
