@@ -62,61 +62,61 @@ class SSLPretrainModel(nn.Module):
 
     def forward(self, batch_graph: BatchMolGraph):
     # Perform message passing to get final atom embeddings
-    atom_hiddens = self.encoder.encoder[0](batch_graph)
-
-    # Graph-level (molecule-level) embeddings
-    graph_embeddings = []
-    for (start, size) in batch_graph.a_scope:
-        if size == 0:
-            mol_embedding = torch.zeros(atom_hiddens.size(1), device=atom_hiddens.device)
-        else:
-            mol_embedding = atom_hiddens[start:start+size].sum(dim=0)
-        graph_embeddings.append(mol_embedding)
-    graph_embeddings = torch.stack(graph_embeddings, dim=0)  # (num_molecules, hidden_size)
-
-    # Node-level prediction
-    node_pred = self.node_head(atom_hiddens)  # shape (total_atoms, atom_feat_size)
-
-    # Edge-level prediction
-    bond_preds = []
-    visited = set()
-    bond_to_mol = []
-    for mol_idx, (start, length) in enumerate(batch_graph.b_scope):
-        bond_to_mol.extend([mol_idx] * length)
-    bond_to_mol = torch.tensor(bond_to_mol, device=atom_hiddens.device)
-
-    for e in range(len(batch_graph.f_bonds)):
-        rev_e = batch_graph.b2revb[e].item()
-        if rev_e in visited:
-            continue
-        visited.add(e)
-        visited.add(rev_e)
-
-        mol_idx = bond_to_mol[e].item()
-        a1_local = batch_graph.b2a[e].item()
-        a2_local = batch_graph.b2a[rev_e].item()
-
-        a1_start, _ = batch_graph.a_scope[mol_idx]
-        a2_start, _ = batch_graph.a_scope[mol_idx]
-
-        a1_idx = a1_start + a1_local
-        a2_idx = a2_start + a2_local
-
-        if a1_idx >= atom_hiddens.size(0) or a2_idx >= atom_hiddens.size(0):
-            print(f"⚠️  Skipping edge ({e}) due to out-of-bounds atom indices: a1={a1_idx}, a2={a2_idx}")
-            continue
-
-        h1 = atom_hiddens[a1_idx]
-        h2 = atom_hiddens[a2_idx]
-        bond_emb = 0.5 * (h1 + h2)
-        bond_preds.append(self.edge_head(bond_emb))
-
-    edge_pred = torch.stack(bond_preds, dim=0) if bond_preds else torch.empty(0, batch_graph.num_edge_features)
-
-    # Graph-level prediction
-    graph_pred = self.graph_head(graph_embeddings)  # shape (batch_size, 1)
-
-    return node_pred, edge_pred, graph_pred
+        atom_hiddens = self.encoder.encoder[0](batch_graph)
+    
+        # Graph-level (molecule-level) embeddings
+        graph_embeddings = []
+        for (start, size) in batch_graph.a_scope:
+            if size == 0:
+                mol_embedding = torch.zeros(atom_hiddens.size(1), device=atom_hiddens.device)
+            else:
+                mol_embedding = atom_hiddens[start:start+size].sum(dim=0)
+            graph_embeddings.append(mol_embedding)
+        graph_embeddings = torch.stack(graph_embeddings, dim=0)  # (num_molecules, hidden_size)
+    
+        # Node-level prediction
+        node_pred = self.node_head(atom_hiddens)  # shape (total_atoms, atom_feat_size)
+    
+        # Edge-level prediction
+        bond_preds = []
+        visited = set()
+        bond_to_mol = []
+        for mol_idx, (start, length) in enumerate(batch_graph.b_scope):
+            bond_to_mol.extend([mol_idx] * length)
+        bond_to_mol = torch.tensor(bond_to_mol, device=atom_hiddens.device)
+    
+        for e in range(len(batch_graph.f_bonds)):
+            rev_e = batch_graph.b2revb[e].item()
+            if rev_e in visited:
+                continue
+            visited.add(e)
+            visited.add(rev_e)
+    
+            mol_idx = bond_to_mol[e].item()
+            a1_local = batch_graph.b2a[e].item()
+            a2_local = batch_graph.b2a[rev_e].item()
+    
+            a1_start, _ = batch_graph.a_scope[mol_idx]
+            a2_start, _ = batch_graph.a_scope[mol_idx]
+    
+            a1_idx = a1_start + a1_local
+            a2_idx = a2_start + a2_local
+    
+            if a1_idx >= atom_hiddens.size(0) or a2_idx >= atom_hiddens.size(0):
+                print(f"⚠️  Skipping edge ({e}) due to out-of-bounds atom indices: a1={a1_idx}, a2={a2_idx}")
+                continue
+    
+            h1 = atom_hiddens[a1_idx]
+            h2 = atom_hiddens[a2_idx]
+            bond_emb = 0.5 * (h1 + h2)
+            bond_preds.append(self.edge_head(bond_emb))
+    
+        edge_pred = torch.stack(bond_preds, dim=0) if bond_preds else torch.empty(0, batch_graph.num_edge_features)
+    
+        # Graph-level prediction
+        graph_pred = self.graph_head(graph_embeddings)  # shape (batch_size, 1)
+    
+        return node_pred, edge_pred, graph_pred
 
 
 def safe_float(x):
