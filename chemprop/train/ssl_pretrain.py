@@ -54,7 +54,7 @@ class SSLPretrainModel(nn.Module):
         atom_hiddens = self.encoder.encoder[0](batch_graph)
         # batch_graph.atom_scope is a list of (start_index, num_atoms) for each molecule
         graph_embeddings = []
-        for (start, size) in batch_graph.atom_scope:
+        for (start, size) in batch_graph.a_scope:
             if size == 0:
                 mol_embedding = torch.zeros(atom_hiddens.size(1), device=atom_hiddens.device)
             else:
