@@ -299,6 +299,7 @@ train_args = Namespace(
     seed=0,
     polymer=args.polymer
 )
+train_args.ignore_columns = []
 train_data = get_data(path=data_path, args=train_args, skip_none_targets=True)
 # Filter train and val sets within train_data based on our indices
 train_idx_set = set(df.index[df[smiles_col].isin(train_smiles)])
