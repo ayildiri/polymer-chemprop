@@ -1,494 +1,525 @@
+#!/usr/bin/env python
+# ssl_pretrain_V2.py
+"""
+Self-supervised pretraining script for polymer-chemprop.
+It loads polymer ensemble SMILES from a CSV (with 'poly_chemprop_input' column), 
+performs graph-based self-supervised learning (masking atoms/bonds and predicting their features, plus predicting polymer molecular weight).
+"""
 import os
 import math
+import logging
 import random
+import argparse
 import numpy as np
 import pandas as pd
-from argparse import ArgumentParser, Namespace
+try:
+    from rdkit import Chem
+    from rdkit.Chem import rdchem
+except ImportError:
+    Chem = None
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader
+import torch.nn.functional as F
+from torch.utils.data import Dataset, DataLoader
 
-# Import Chemprop classes and utilities
-from chemprop.data.utils import get_data  # data loading function
-from chemprop.models import MoleculeModel  # Chemprop model class (MPNN + FFN)
-from chemprop.utils import save_checkpoint  # function to save model in checkpoint format
+# Set up logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# Parser for command-line arguments
-parser = ArgumentParser()
-parser.add_argument('--data_path', type=str, required=True, help='Path to input data (CSV or TXT file).')
-parser.add_argument('--polymer', action='store_true', help='Flag indicating the input is polymer data with extended SMILES.')
-parser.add_argument('--pretrain_frac', type=float, default=1.0, help='Fraction of data to use for pretraining (e.g., 0.4 for 40%).')
-parser.add_argument('--save_dir', type=str, required=True, help='Directory to save the pretrained model (and optional splits).')
-parser.add_argument('--epochs', type=int, default=30, help='Number of pretraining epochs.')
-parser.add_argument('--batch_size', type=int, default=32, help='Batch size for SSL pretraining.')
-parser.add_argument('--num_workers', type=int, default=0, help='Number of DataLoader worker processes.')
-parser.add_argument('--save_smiles_splits', action='store_true', help='If set, save train/val SMILES splits to files in save_dir.')
-args = parser.parse_args()
+# Hardcoded SMILES column name
+SMILES_COL = "poly_chemprop_input"
 
-# 1. Data Loading and Preprocessing
-data_path = args.data_path
-# Determine if the file has a header and identify the column with polymer (or molecule) SMILES
-with open(data_path, 'r') as f:
-    first_line = f.readline().strip()
-# Heuristic: assume header if the first token is non-smiles (alphabetic and not too long)
-tokens = first_line.split(',')
-has_header = any(char.isalpha() for char in tokens[0]) and len(tokens[0]) < 20
-# Read the file into a DataFrame
-if data_path.endswith('.csv') or data_path.endswith('.txt'):
-    df = pd.read_csv(data_path, header=0 if has_header else None)
-else:
-    raise ValueError("Unsupported file format: only CSV or TXT files are allowed.")
-# If no header provided, assign default column name for the first column
-if not has_header:
-    df.columns = ['smiles'] + [f"prop_{i}" for i in range(1, len(df.columns))]
-# Identify the column name that contains the polymer/molecule SMILES
-smiles_col_candidates = ['poly_chemprop_input']
-smiles_col = None
-for col in df.columns:
-    if col in smiles_col_candidates:
-        smiles_col = col
-        break
-if smiles_col is None:
-    # Default to first column if no known name is found
-    smiles_col = df.columns[0]
-smiles_list = df[smiles_col].astype(str).tolist()
+def one_hot_encoding(value, choices):
+    """One-hot encoding with an extra 'unknown' category at end if value not in choices."""
+    encoding = [0] * (len(choices) + 1)
+    try:
+        idx = choices.index(value)
+        encoding[idx] = 1
+    except ValueError:
+        encoding[-1] = 1
+    return encoding
 
-# If polymer flag is set, process polymer SMILES:
-# - Remove the optional degree of polymerization (~Xn) from each string
-# - (The connectivity info after '|' is retained for graph construction)
-if args.polymer:
-    processed_smiles = []
-    for s in smiles_list:
-        # Remove anything after ~ (degree of polymerization), if present
-        if '~' in s:
-            s = s.split('~')[0]
-        processed_smiles.append(s)
-    smiles_list = processed_smiles
+def get_atom_features(atom):
+    """Compute atom feature vector (based on Chemprop defaults) for a given RDKit atom."""
+    # Atomic number one-hot (allow up to 100)
+    atom_num = atom.GetAtomicNum()
+    atom_num_feature = one_hot_encoding(atom_num, list(range(1, 101)))
+    # Degree one-hot (degree of atom in graph, up to 5)
+    degree_feature = one_hot_encoding(atom.GetTotalDegree(), list(range(6)))
+    # Formal charge one-hot (allow -3 to +3)
+    formal_charge_feature = one_hot_encoding(atom.GetFormalCharge(), [-3, -2, -1, 0, 1, 2, 3])
+    # Chirality one-hot
+    chiral_tag = int(atom.GetChiralTag())
+    chiral_feature = one_hot_encoding(chiral_tag, [0, 1, 2, 3])
+    # Number of Hs one-hot (explicit + implicit total Hs)
+    num_H = int(atom.GetTotalNumHs())
+    num_H_feature = one_hot_encoding(num_H, list(range(5)))
+    # Hybridization one-hot
+    hybrid = int(atom.GetHybridization())
+    hybrid_feature = one_hot_encoding(hybrid, [0, 1, 2, 3, 4, 5])
+    # Aromaticity
+    aromatic_feature = [1 if atom.GetIsAromatic() else 0]
+    # Atomic mass (scaled)
+    mass_feature = [atom.GetMass() * 0.01]
+    features = atom_num_feature + degree_feature + formal_charge_feature + chiral_feature + num_H_feature + hybrid_feature + aromatic_feature + mass_feature
+    return features
 
-# If using only a fraction of data for pretraining, sample that fraction
-total_data = len(smiles_list)
-if args.pretrain_frac < 1.0:
-    use_count = math.floor(total_data * args.pretrain_frac)
-    if use_count < 1:
-        use_count = 1
-    # Fix a seed for reproducibility of the subset
-    random.seed(0)
-    subset_indices = random.sample(range(total_data), use_count)
-    subset_indices.sort()
-    smiles_list = [smiles_list[i] for i in subset_indices]
-    df = df.iloc[subset_indices].reset_index(drop=True)
+def get_bond_features(bond):
+    """Compute bond feature vector for an RDKit bond (Chemprop style)."""
+    bt = bond.GetBondType()
+    bond_type_features = [
+        bt == rdchem.BondType.SINGLE,
+        bt == rdchem.BondType.DOUBLE,
+        bt == rdchem.BondType.TRIPLE,
+        bt == rdchem.BondType.AROMATIC
+    ]
+    conjugated = bond.GetIsConjugated() if bt is not None else False
+    in_ring = bond.IsInRing() if bt is not None else False
+    conj_ring_features = [1 if conjugated else 0, 1 if in_ring else 0]
+    stereo = int(bond.GetStereo())
+    stereo_feature = [0]*6
+    if 0 <= stereo < 6:
+        stereo_feature[stereo] = 1
+    features = bond_type_features + conj_ring_features + stereo_feature
+    features = [1 if x else 0 for x in features]
+    return features
 
-# Split data into training and validation sets (e.g., 90%/10% split)
-# (Validation is used to monitor SSL loss, though labels are pseudo, to avoid overfitting)
-val_size = max(1, int(0.1 * len(smiles_list))) if len(smiles_list) > 1 else 0
-if val_size > 0:
-    random.seed(0)
-    indices = list(range(len(smiles_list)))
-    random.shuffle(indices)
-    val_indices = set(indices[:val_size])
-    train_smiles = [smiles_list[i] for i in range(len(smiles_list)) if i not in val_indices]
-    val_smiles = [smiles_list[i] for i in range(len(smiles_list)) if i in val_indices]
-else:
-    train_smiles = smiles_list
-    val_smiles = []
+class PolymerGraph:
+    """Data structure for a polymer graph with precomputed features."""
+    def __init__(self):
+        self.n_atoms = 0
+        self.n_edges = 0
+        self.atom_features = []   # list of list[float]
+        self.edge_index = []      # list of (src_idx, dest_idx)
+        self.edge_features = []   # list of list[float]
+        self.edge_weights = []    # list of float
+        self.b2rev = []           # reverse edge mapping list
+        self.mol_weight = 0.0     # pseudo-label (ensemble molecular weight)
 
-# Optionally save the SMILES splits to disk for reproducibility
-os.makedirs(args.save_dir, exist_ok=True)
-if args.save_smiles_splits:
-    train_path = os.path.join(args.save_dir, "smiles_train.txt")
-    val_path = os.path.join(args.save_dir, "smiles_val.txt")
-    with open(train_path, 'w') as f:
-        for smi in train_smiles:
-            f.write(f"{smi}\n")
-    if val_smiles:
-        with open(val_path, 'w') as f:
-            for smi in val_smiles:
-                f.write(f"{smi}\n")
+class PolymerDataset(Dataset):
+    def __init__(self, graphs):
+        self.graphs = graphs
+    def __len__(self):
+        return len(self.graphs)
+    def __getitem__(self, idx):
+        return self.graphs[idx]
 
-# Compute graph-level pseudo-labels: ensemble polymer molecular weight
-graph_labels = []
-# Precompute atomic masses for efficiency (H through major elements, fallback to periodic table via RDKit if available)
-try:
-    from rdkit.Chem import Descriptors, MolFromSmiles
-except ImportError:
-    MolFromSmiles = None
+def collate_graphs(batch_graphs):
+    """Custom collate function to combine a list of PolymerGraph objects into a batch."""
+    total_atoms = sum(g.n_atoms for g in batch_graphs)
+    total_edges = sum(g.n_edges for g in batch_graphs)
+    atom_feat_dim = len(batch_graphs[0].atom_features[0]) if batch_graphs[0].n_atoms > 0 else 0
+    bond_feat_dim = len(batch_graphs[0].edge_features[0]) if batch_graphs[0].n_edges > 0 else 0
+    combined_atom_feats = torch.zeros(total_atoms, atom_feat_dim, dtype=torch.float32)
+    combined_edge_feats = torch.zeros(total_edges, bond_feat_dim, dtype=torch.float32)
+    edge_src_list = []
+    edge_dst_list = []
+    b2rev_list = []
+    node_to_graph = torch.zeros(total_atoms, dtype=torch.long)
+    mol_weights = []
+    atom_offset = 0
+    edge_offset = 0
+    for graph_idx, g in enumerate(batch_graphs):
+        n = g.n_atoms
+        e = g.n_edges
+        if n > 0:
+            combined_atom_feats[atom_offset:atom_offset+n] = torch.tensor(g.atom_features, dtype=torch.float32)
+        if e > 0:
+            combined_edge_feats[edge_offset:edge_offset+e] = torch.tensor(g.edge_features, dtype=torch.float32)
+        for local_idx, (src, dst) in enumerate(g.edge_index):
+            edge_src_list.append(src + atom_offset)
+            edge_dst_list.append(dst + atom_offset)
+        b2rev_list.extend([rev_idx + edge_offset if rev_idx is not None else None for rev_idx in g.b2rev])
+        if n > 0:
+            node_to_graph[atom_offset:atom_offset+n] = graph_idx
+        mol_weights.append(g.mol_weight)
+        atom_offset += n
+        edge_offset += e
+    edge_src = torch.tensor(edge_src_list, dtype=torch.long)
+    edge_dst = torch.tensor(edge_dst_list, dtype=torch.long)
+    edge_weights = torch.cat([torch.tensor(g.edge_weights, dtype=torch.float32) for g in batch_graphs], dim=0) if total_edges > 0 else torch.tensor([], dtype=torch.float32)
+    # Convert b2rev None to int (self-loops won't be used, but ensure tensor dtype consistency)
+    b2rev_tensor = []
+    for val in b2rev_list:
+        b2rev_tensor.append(-1 if val is None else val)
+    b2rev = torch.tensor(b2rev_tensor, dtype=torch.long)
+    mol_weights = torch.tensor(mol_weights, dtype=torch.float32)
+    return {
+        'atom_feats': combined_atom_feats,
+        'edge_src': edge_src,
+        'edge_dst': edge_dst,
+        'edge_feats': combined_edge_feats,
+        'edge_weights': edge_weights,
+        'b2rev': b2rev,
+        'node_to_graph': node_to_graph,
+        'batch_size': len(batch_graphs),
+        'mol_weights': mol_weights
+    }
 
-for smi in smiles_list:
-    # Calculate ensemble molecular weight = sum(weight of each monomer * its fraction)
-    ensemble_weight = 0.0
-    if args.polymer and '|' in smi:
-        # Split polymer string into monomer part and ratio part
-        main_part, *rest = smi.split('|')
-        monomer_smiles = main_part  # part before first '|'
-        # Extract numeric ratio values from the rest (ignore connectivity descriptors with '<')
-        ratios = []
-        for token in rest:
-            if token == '' or '<' in token:
-                break  # stop at connectivity info
-            try:
-                ratios.append(float(token))
-            except:
-                pass
-        if not ratios:
-            ratios = [1.0]  # if no ratios provided, assume single monomer with fraction 1
-        # In case of a single monomer, ensure ratio list length matches number of monomers (which will be 1)
-        # Split monomer SMILES by '.' to handle multi-monomer ensembles
-        monomers = monomer_smiles.split('.')
-        if len(ratios) != len(monomers):
-            # Normalize or pad ratios if needed
-            ratios = ratios[:len(monomers)]
-            if len(ratios) < len(monomers):
-                ratios += [1.0] * (len(monomers) - len(ratios))
-            total = sum(ratios)
-            ratios = [r/total for r in ratios] if total > 0 else [1.0] * len(ratios)
-        # Calculate molecular weight of each monomer fragment
-        weights = []
-        for mono in monomers:
-            # Use RDKit for exact molecular weight if available
-            if MolFromSmiles:
-                mol = MolFromSmiles(mono)
-            else:
-                mol = None
-            if mol:
-                # Calculate molecular weight excluding dummy atoms (symbol '*')
-                mass = 0.0
-                for atom in mol.GetAtoms():
-                    if atom.GetSymbol() != '*':
-                        mass += atom.GetMass()
-                weights.append(mass)
-            else:
-                # Fallback: approximate mass by summing atomic masses from symbols
-                # (Assume uppercase letters as element start, handle simple cases)
-                mass = 0.0
-                elem = ""
-                for char in mono:
-                    if char.isalpha():
-                        if char.isupper():
-                            # new element symbol starts
-                            if elem:
-                                # add previous element mass
-                                # simple periodic table subset
-                                mass += {"H":1.008,"B":10.81,"C":12.01,"N":14.01,"O":16.00,"F":19.00,"P":30.97,"S":32.06,"Cl":35.45}.get(elem, 0.0)
-                            elem = char
-                        else:
-                            # lowercase letter, continue element symbol
-                            elem += char
-                    elif char.isdigit():
-                        continue  # skip digits (would handle count, but assume monomer SMILES explicitly list all atoms)
-                    else:
-                        # wildcard or bond, flush current element
-                        if elem:
-                            mass += {"H":1.008,"B":10.81,"C":12.01,"N":14.01,"O":16.00,"F":19.00,"P":30.97,"S":32.06,"Cl":35.45}.get(elem, 0.0)
-                        elem = ""
-                if elem:
-                    mass += {"H":1.008,"B":10.81,"C":12.01,"N":14.01,"O":16.00,"F":19.00,"P":30.97,"S":32.06,"Cl":35.45}.get(elem, 0.0)
-                weights.append(mass)
-        # Compute weighted sum of monomer masses
-        ensemble_weight = sum(w * r for w, r in zip(weights, ratios))
-    else:
-        # Non-polymer or no '|' present: treat the whole SMILES as one molecule
-        if MolFromSmiles:
-            mol = MolFromSmiles(smi)
-        else:
-            mol = None
-        mass = 0.0
-        if mol:
-            for atom in mol.GetAtoms():
-                if atom.GetSymbol() != '*':
-                    mass += atom.GetMass()
-        else:
-            # Approximate for simple molecules
-            for ch in smi:
-                if ch.isalpha() and ch.isupper():
-                    mass += {"H":1.008,"B":10.81,"C":12.01,"N":14.01,"O":16.00,"F":19.00,"P":30.97,"S":32.06,"Cl":35.45}.get(ch, 0.0)
-        ensemble_weight = mass
-    graph_labels.append(ensemble_weight)
-graph_labels = torch.tensor(graph_labels, dtype=torch.float32)
-
-
-# 2. Define the SSL Pretraining Model (Encoder + Multi-head outputs)
 class SSLPretrainModel(nn.Module):
-    def __init__(self, atom_fdim, bond_fdim, hidden_size, depth):
+    def __init__(self, atom_feat_dim, bond_feat_dim, hidden_size, depth, dropout):
         super(SSLPretrainModel, self).__init__()
+        self.atom_feat_dim = atom_feat_dim
+        self.bond_feat_dim = bond_feat_dim
         self.hidden_size = hidden_size
         self.depth = depth
-        # Linear layers for message passing
-        # W_i: transforms combined atom+bond features to hidden state
-        self.W_initial = nn.Linear(bond_fdim, hidden_size)
-        # W_h: transforms aggregated messages to new bond state (shared across message passing steps)
+        # Initial message transformation (atom + bond -> hidden)
+        self.W_initial = nn.Linear(atom_feat_dim + bond_feat_dim, hidden_size)
+        # Message passing update transformation (hidden -> hidden)
         self.W_message = nn.Linear(hidden_size, hidden_size)
-        # Atom feature transform (to incorporate atom features at node level)
-        self.W_atom = nn.Linear(atom_fdim, hidden_size)
-        # Output heads
-        self.node_head = nn.Linear(hidden_size, atom_fdim)   # predict original atom features
-        self.edge_head = nn.Linear(hidden_size, bond_fdim - atom_fdim)  # predict original bond features (excluding attached atom part)
+        # Prediction heads
+        self.node_head = nn.Sequential(
+            nn.Linear(hidden_size, hidden_size),
+            nn.ReLU(),
+            nn.Linear(hidden_size, atom_feat_dim)
+        )
+        self.edge_head = nn.Sequential(
+            nn.Linear(hidden_size, hidden_size),
+            nn.ReLU(),
+            nn.Linear(hidden_size, bond_feat_dim)
+        )
         self.graph_head = nn.Sequential(
-            nn.Dropout(0.1),
             nn.Linear(hidden_size, hidden_size),
             nn.ReLU(),
             nn.Linear(hidden_size, 1)
         )
-        # Initialize weights (following default initialization in PyTorch)
-    
-    def forward(self, batch_graph):
-        """Forward pass that returns node, edge, and graph predictions."""
-        # Get graph attributes from BatchMolGraph
-        # We assume BatchMolGraph provides:
-        # atom_features: (N_atoms, atom_fdim)
-        # bond_features: (N_bonds, bond_fdim) - combined atom/bond features for each directed bond
-        # b2a: list or tensor mapping each bond index -> source atom index
-        # a2b: list of lists mapping each atom index -> incoming bond indices
-        atom_fea = torch.FloatTensor(batch_graph.f_atoms)  # shape (N_atoms, atom_fdim)
-        bond_fea = torch.FloatTensor(batch_graph.f_bonds)  # shape (N_bonds, bond_fdim)
-        b2a = torch.LongTensor(batch_graph.b2a)           # (N_bonds,) source atom indices
-        a2b = batch_graph.a2b  # list of incoming bond lists per atom (length N_atoms)
-
-        atom_fea = atom_fea.to(self.W_initial.weight.device)
-        bond_fea = bond_fea.to(self.W_initial.weight.device)
-        b2a = b2a.to(self.W_initial.weight.device)
-        # Initialize bond hidden states
-        bond_hidden = self.W_initial(bond_fea)  # (N_bonds, hidden_size)
-        bond_hidden = torch.relu(bond_hidden)
-        # Message passing iterations
-        # Precompute reverse bond indices for each bond (to exclude reverse message)
-        num_bonds = bond_hidden.size(0)
-        # Assume bonds are stored in pairs (i, i^1 are reverse of each other)
-        rev_idx = torch.arange(num_bonds, device=b2a.device)
-        rev_idx = torch.where(rev_idx % 2 == 0, rev_idx+1, rev_idx-1)
-        # Message passing loop
+    def forward(self, atom_feats, edge_src, edge_dst, edge_feats, edge_weights, b2rev, node_to_graph):
+        # Initial directed edge hidden states
+        src_atom_feats = atom_feats[edge_src]  # [E, atom_feat_dim]
+        edge_input = torch.cat([src_atom_feats, edge_feats], dim=1)  # [E, atom_feat_dim + bond_feat_dim]
+        hidden_edges = F.relu(self.W_initial(edge_input))
+        E = hidden_edges.size(0)
+        N = atom_feats.size(0)
         for t in range(self.depth):
-            # Sum incoming messages for each atom (source aggregation)
-            # We scatter-add bond messages to source atoms
-            source_atoms = b2a  # each bond's source atom
-            atom_message_sum = torch.zeros((atom_fea.size(0), self.hidden_size), device=b2a.device)
-            atom_message_sum = atom_message_sum.index_add(0, source_atoms, bond_hidden)
-            # Now for each bond, get the sum at its source atom and subtract that bond's reverse message
-            source_sum = atom_message_sum[b2a]            # (N_bonds, hidden) sum of messages at source atom of each bond
-            rev_messages = bond_hidden[rev_idx]           # corresponding reverse bond hidden state for each bond
-            message = source_sum - rev_messages          # exclude reverse bond contribution
-            # Update bond hidden states
-            bond_hidden = self.W_message(message)
-            bond_hidden = torch.relu(bond_hidden)
-        # After message passing, compute atom embeddings by aggregating incoming bond messages at each atom
-        atom_message_sum = torch.zeros((atom_fea.shape[0], self.hidden_size), device=b2a.device)
-        atom_message_sum = atom_message_sum.index_add(0, b2a, bond_hidden)
-        atom_hidden = torch.relu(self.W_atom(atom_fea) + atom_message_sum)
-        # Pool atom embeddings to get graph embeddings for each molecule in batch
-        mol_vecs = []
-        for start, length in batch_graph.a_scope:  # a_scope: list of (start_index, length) for atoms in each molecule
-            if length == 0:
-                mol_vec = torch.zeros(self.hidden_size, device=b2a.device)
+            M = torch.zeros((N, self.hidden_size), device=hidden_edges.device)
+            if E > 0:
+                M.index_add_(0, edge_dst, edge_weights.unsqueeze(1) * hidden_edges)
+                rev_hidden = hidden_edges[b2rev]  # hidden state of reverse edge for each edge
+                rev_weight = edge_weights[b2rev].unsqueeze(1)
+                msg = M[edge_src] - rev_weight * rev_hidden
             else:
-                atom_indices = torch.arange(start, start+length, device=b2a.device, dtype=torch.long)
-                mol_vec = atom_hidden[atom_indices].sum(dim=0)
-            mol_vecs.append(mol_vec)
-        mol_repr = torch.stack(mol_vecs, dim=0)  # (batch_size, hidden_size)
-        # Output predictions
-        node_pred = self.node_head(atom_hidden)           # (N_atoms, atom_fdim)
-        edge_pred = self.edge_head(bond_hidden)           # (N_bonds, bond_fdim - atom_fdim)
-        graph_pred = self.graph_head(mol_repr).squeeze(-1)  # (batch_size,)
-        return node_pred, edge_pred, graph_pred
+                msg = torch.zeros((0, self.hidden_size), device=hidden_edges.device)
+            hidden_edges = F.relu(self.W_message(msg))
+        # Final node embeddings
+        node_repr = torch.zeros((N, self.hidden_size), device=hidden_edges.device)
+        if E > 0:
+            node_repr.index_add_(0, edge_dst, edge_weights.unsqueeze(1) * hidden_edges)
+        # Graph embeddings by sum pooling
+        batch_size = int(node_to_graph.max().item()) + 1 if node_to_graph.numel() > 0 else 0
+        graph_embeds = torch.zeros((batch_size, self.hidden_size), device=hidden_edges.device)
+        if N > 0:
+            graph_embeds.index_add_(0, node_to_graph, node_repr)
+        # Predictions
+        pred_node = self.node_head(node_repr)
+        pred_edge = self.edge_head(hidden_edges)
+        pred_graph = self.graph_head(graph_embeds).squeeze(-1)  # shape [batch_size]
+        return pred_node, pred_edge, pred_graph
 
-# Prepare data for PyTorch DataLoader using Chemprop's MoleculeDataset
-# We use Chemprop's get_data to parse smiles into its MoleculeDatapoint objects (which include MolGraph building).
-train_args = Namespace(
-    smiles_columns=[smiles_col],
-    target_columns=[],  # no real targets (self-supervised)
-    dataset_type='regression',
-    max_data_size=None,
-    skip_invalid_smiles=False,
-    seed=0,
-    polymer=args.polymer
-)
-train_data = get_data(path=data_path, args=train_args, skip_none_targets=True)
-# Filter train and val sets within train_data based on our indices
-train_idx_set = set(df.index[df[smiles_col].isin(train_smiles)])
-val_idx_set = set(df.index[df[smiles_col].isin(val_smiles)])
-train_dataset = [dp for i, dp in enumerate(train_data) if i in train_idx_set]
-val_dataset = [dp for i, dp in enumerate(train_data) if i in val_idx_set]
-train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, collate_fn=lambda x: x)
-val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, collate_fn=lambda x: x)
+def parse_polymer_smiles(polymer_smiles):
+    """Parse extended polymer SMILES input into monomer parts, ratios, edges and Xn."""
+    s = polymer_smiles.strip()
+    parts = s.split('|')
+    monomer_smiles_str = parts[0]
+    monomer_list = monomer_smiles_str.split('.') if monomer_smiles_str else []
+    ratios = []
+    edges_str = ""
+    if len(parts) > 1:
+        num_monomers = len(monomer_list)
+        ratio_parts = parts[1:1+num_monomers]
+        try:
+            ratios = [float(x) for x in ratio_parts]
+        except:
+            ratios = []
+        if len(parts) > 1 + num_monomers:
+            edges_str = parts[1+num_monomers]
+    if not ratios or len(ratios) != len(monomer_list):
+        if len(monomer_list) > 0:
+            ratios = [1.0] * len(monomer_list)
+    Xn = None
+    if '~' in edges_str:
+        try:
+            edge_part, xn_part = edges_str.split('~', 1)
+            Xn = float(xn_part)
+        except:
+            Xn = None
+        edges_str = edge_part
+    edges = []
+    if edges_str:
+        tokens = edges_str.split('<')
+        for token in tokens:
+            token = token.strip()
+            if not token:
+                continue
+            try:
+                ij, w1, w2 = token.split(':')
+                i_str, j_str = ij.split('-')
+                i = int(i_str)
+                j = int(j_str)
+                w1 = float(w1)
+                w2 = float(w2)
+                edges.append((i, j, w1, w2))
+            except:
+                continue
+    return monomer_list, ratios, edges, Xn
 
-# Instantiate the SSL pretraining model
-# Determine feature dimensions from one example (assuming non-empty dataset)
-sample_graph = train_data[0].mol[0] if args.polymer else train_data[0].mol  # MoleculeDatapoint.mol may be a list for polymer (multicomponent)
-atom_fdim = sample_graph.atom_fdim
-bond_fdim = sample_graph.bond_fdim
-hidden_size = 300  # use Chemprop default hidden size
-depth = 3         # use Chemprop default number of message passing steps
-model = SSLPretrainModel(atom_fdim, bond_fdim, hidden_size, depth)
-model = model.to(torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
-# Optimizer
-optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+def build_polymer_graph(smiles):
+    """Build PolymerGraph from an extended polymer SMILES string."""
+    graph = PolymerGraph()
+    monomers, ratios, edges_info, Xn = parse_polymer_smiles(smiles)
+    if len(monomers) == 0:
+        return None
+    total_weight = 0.0
+    for m_smiles, frac in zip(monomers, ratios):
+        mol_m = Chem.MolFromSmiles(m_smiles)
+        if mol_m is None:
+            logging.warning(f"RDKit failed to parse monomer: {m_smiles}")
+            continue
+        weight = 0.0
+        for atom in mol_m.GetAtoms():
+            if atom.GetAtomicNum() > 0:
+                weight += atom.GetMass()
+        total_weight += frac * weight
+    graph.mol_weight = total_weight
+    ensemble_mol = Chem.MolFromSmiles('.'.join(monomers))
+    if ensemble_mol is None:
+        logging.error(f"Failed to parse polymer SMILES: {smiles}")
+        return None
+    dummy_index_map = {}
+    for atom in ensemble_mol.GetAtoms():
+        feat = get_atom_features(atom)
+        graph.atom_features.append(feat)
+        idx = atom.GetIdx()
+        graph.n_atoms += 1
+        if atom.GetSymbol() == '*' and atom.GetAtomMapNum() != 0:
+            dummy_index_map[atom.GetAtomMapNum()] = idx
+    for bond in ensemble_mol.GetBonds():
+        u = bond.GetBeginAtomIdx()
+        v = bond.GetEndAtomIdx()
+        bf = get_bond_features(bond)
+        e_index = graph.n_edges
+        graph.edge_index.append((u, v))
+        graph.edge_features.append(bf)
+        graph.edge_weights.append(1.0)
+        graph.b2rev.append(None)
+        graph.n_edges += 1
+        rev_index = graph.n_edges
+        graph.edge_index.append((v, u))
+        graph.edge_features.append(bf)
+        graph.edge_weights.append(1.0)
+        graph.b2rev.append(None)
+        graph.n_edges += 1
+        graph.b2rev[e_index] = rev_index
+        graph.b2rev[rev_index] = e_index
+    weight_factor = 1.0
+    if Xn is not None:
+        try:
+            weight_factor = 1.0 + math.log(Xn)
+        except ValueError:
+            weight_factor = 1.0
+    for (i, j, w1, w2) in edges_info:
+        if i in dummy_index_map and j in dummy_index_map:
+            u = dummy_index_map[i]
+            v = dummy_index_map[j]
+            bf = [1,0,0,0, 0,0] + [1,0,0,0,0,0]  # 12-length feature vector for polymer bond
+            e_index = graph.n_edges
+            graph.edge_index.append((u, v))
+            graph.edge_features.append(bf)
+            graph.edge_weights.append(w1 * weight_factor)
+            graph.b2rev.append(None)
+            graph.n_edges += 1
+            rev_index = graph.n_edges
+            graph.edge_index.append((v, u))
+            graph.edge_features.append(bf)
+            graph.edge_weights.append(w2 * weight_factor)
+            graph.b2rev.append(None)
+            graph.n_edges += 1
+            graph.b2rev[e_index] = rev_index
+            graph.b2rev[rev_index] = e_index
+    return graph
 
-# 3. Self-supervised Training Loop
-best_val_loss = float('inf')
-best_state_dict = None
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--data_path', type=str, required=True, help='Path to CSV file with poly_chemprop_input column.')
+    parser.add_argument('--save_dir', type=str, required=True, help='Directory to save the pretrained model.')
+    parser.add_argument('--pretrain_frac', type=float, default=1.0, help='Fraction of dataset to use for pretraining.')
+    parser.add_argument('--val_frac', type=float, default=0.1, help='Fraction of data to use for validation.')
+    parser.add_argument('--epochs', type=int, default=10, help='Number of training epochs.')
+    parser.add_argument('--batch_size', type=int, default=32, help='Batch size for training.')
+    parser.add_argument('--hidden_size', type=int, default=300, help='Hidden dimensionality for GNN.')
+    parser.add_argument('--depth', type=int, default=3, help='Number of message passing steps.')
+    parser.add_argument('--dropout', type=float, default=0.0, help='Dropout probability (not used in message passing).')
+    parser.add_argument('--seed', type=int, default=0, help='Random seed for reproducibility.')
+    parser.add_argument('--no_cuda', action='store_true', help='Disable GPU usage even if available.')
+    parser.add_argument('--dataset_type', type=str, default='regression', help='Dataset type (for compatibility, not used).')
+    parser.add_argument('--ignore_columns', type=str, default=None, help='Columns to ignore (not used).')
+    parser.add_argument('--features_path', type=str, default=None, help='Path to additional features (not used).')
+    parser.add_argument('--atom_descriptors_path', type=str, default=None, help='Path to atom descriptors (not used).')
+    parser.add_argument('--bond_features_path', type=str, default=None, help='Path to bond features (not used).')
+    args = parser.parse_args()
 
-for epoch in range(1, args.epochs + 1):
-    model.train()
-    total_train_loss = 0.0
-    for batch in train_loader:
-        # batch is a list of MoleculeDatapoints; construct a BatchMolGraph for it
-        batch_graph = batch[0].batch_graph() if hasattr(batch[0], 'batch_graph') else None
-        if batch_graph is None:
-            # Manually construct BatchMolGraph if not precomputed
-            from chemprop.features import BatchMolGraph
-            mol_graphs = [dp.mol[0] if isinstance(dp.mol, list) else dp.mol for dp in batch]
-            batch_graph = BatchMolGraph(mol_graphs)
-        # Prepare masks for random nodes and edges in the batch_graph
-        num_atoms = sum([atoms for _, atoms in batch_graph.a_scope])
-        num_bonds = batch_graph.num_bonds
-        # Mask 2 atoms and 2 bonds per molecule (or fewer if molecule is small)
-        mask_node_index = torch.zeros(num_atoms, dtype=torch.bool, device=model.graph_head[1].weight.device)
-        mask_edge_index = torch.zeros(num_bonds, dtype=torch.bool, device=model.graph_head[1].weight.device)
-        atom_offset = 0
-        bond_offset = 0
-        for (atom_start, atom_count), (bond_start, bond_count) in zip(batch_graph.a_scope, batch_graph.b_scope):
-            # Pick up to 2 random atom indices in this molecule's atom range
-            if atom_count > 0:
-                choose_k = min(2, atom_count)
-                rand_atoms = random.sample(range(atom_start, atom_start + atom_count), choose_k)
-                for ai in rand_atoms:
-                    mask_node_index[ai] = True
-            # Pick up to 2 random bonds in this molecule's bond range
-            if bond_count > 0:
-                choose_k = min(2, bond_count)
-                rand_bonds = random.sample(range(bond_start, bond_start + bond_count), choose_k)
-                for bi in rand_bonds:
-                    mask_edge_index[bi] = True
-        # Zero-out (mask) the chosen atom and bond features in the BatchMolGraph
-        batch_graph.f_atoms[mask_node_index.cpu().numpy()] = np.zeros(atom_fdim)
-        batch_graph.f_bonds[mask_edge_index.cpu().numpy()] = np.zeros(bond_fdim)
-        # Run model forward
-        node_pred, edge_pred, graph_pred = model(batch_graph)
-        # Get ground truth features and labels
-        true_atom_features = torch.tensor(batch_graph.f_atoms, dtype=torch.float32, device=node_pred.device)
-        true_bond_features = torch.tensor(batch_graph.f_bonds, dtype=torch.float32, device=edge_pred.device)
-        true_graph_labels = []
-        for dp in batch:
-            # Find index of this datapoint in original smiles_list to fetch its graph label
-            smi = dp.smiles
-            idx = smiles_list.index(smi) if smi in smiles_list else None
-            if idx is None:
-                # fallback: if not found (should not happen normally), append 0
-                true_graph_labels.append(0.0)
-            else:
-                true_graph_labels.append(graph_labels[idx].item())
-        true_graph_labels = torch.tensor(true_graph_labels, dtype=torch.float32, device=graph_pred.device)
-        # Compute losses (MSE), masking out unmasked items
-        if mask_node_index.any():
-            node_loss = ((node_pred[mask_node_index] - true_atom_features[mask_node_index]) ** 2).mean()
-        else:
-            node_loss = torch.tensor(0.0, device=node_pred.device)
-        if mask_edge_index.any():
-            edge_loss = ((edge_pred[mask_edge_index] - true_bond_features[mask_edge_index][:, atom_fdim:]) ** 2).mean()
-        else:
-            edge_loss = torch.tensor(0.0, device=edge_pred.device)
-        graph_loss = ((graph_pred - true_graph_labels) ** 2).mean()
-        loss = node_loss + edge_loss + graph_loss
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-        total_train_loss += loss.item() * len(batch)  # accumulate weighted by batch size
-    total_train_loss /= len(train_smiles)
-    # Validation
-    model.eval()
-    val_loss = 0.0
-    if val_smiles:
+    if args.seed is not None:
+        random.seed(args.seed)
+        np.random.seed(args.seed)
+        torch.manual_seed(args.seed)
+    df = pd.read_csv(args.data_path)
+    if SMILES_COL not in df.columns:
+        logging.error(f"Column '{SMILES_COL}' not found in data file.")
+        return
+    smiles_list = df[SMILES_COL].astype(str).tolist()
+    total_data = len(smiles_list)
+    if args.pretrain_frac < 1.0:
+        subset_size = int(total_data * args.pretrain_frac)
+        subset_size = max(subset_size, 1)
+        smiles_list = random.sample(smiles_list, subset_size)
+        logging.info(f"Subsampling dataset to {subset_size} entries out of {total_data}.")
+    else:
+        logging.info(f"Using full dataset of {total_data} entries.")
+    graphs = []
+    for smi in smiles_list:
+        if not isinstance(smi, str):
+            continue
+        graph = build_polymer_graph(smi)
+        if graph is None:
+            continue
+        graphs.append(graph)
+    logging.info(f"Built graph structures for {len(graphs)} polymers.")
+    if len(graphs) == 0:
+        logging.error("No valid polymer graphs could be constructed. Exiting.")
+        return
+    random.shuffle(graphs)
+    val_count = int(len(graphs) * args.val_frac)
+    val_graphs = graphs[:val_count]
+    train_graphs = graphs[val_count:]
+    logging.info(f"Training on {len(train_graphs)} samples, validating on {len(val_graphs)} samples.")
+    train_dataset = PolymerDataset(train_graphs)
+    val_dataset = PolymerDataset(val_graphs)
+    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, collate_fn=collate_graphs)
+    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, collate_fn=collate_graphs)
+    atom_feat_dim = len(train_graphs[0].atom_features[0])
+    bond_feat_dim = len(train_graphs[0].edge_features[0]) if train_graphs[0].n_edges > 0 else 0
+    model = SSLPretrainModel(atom_feat_dim, bond_feat_dim, args.hidden_size, args.depth, args.dropout)
+    device = torch.device('cuda' if (torch.cuda.is_available() and not args.no_cuda) else 'cpu')
+    model.to(device)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    best_val_loss = float('inf')
+    for epoch in range(1, args.epochs+1):
+        model.train()
+        train_losses = []
+        for batch in train_loader:
+            atom_feats = batch['atom_feats'].to(device)
+            edge_src = batch['edge_src'].to(device)
+            edge_dst = batch['edge_dst'].to(device)
+            edge_feats = batch['edge_feats'].to(device)
+            edge_weights = batch['edge_weights'].to(device) if batch['edge_weights'].numel() > 0 else torch.tensor([], device=device)
+            b2rev = batch['b2rev'].to(device)
+            node_to_graph = batch['node_to_graph'].to(device)
+            batch_size = batch['batch_size']
+            mask_atom_indices = []
+            mask_edge_indices = []
+            for g_idx in range(batch_size):
+                node_indices = torch.nonzero(node_to_graph == g_idx, as_tuple=True)[0]
+                edge_indices = torch.nonzero(node_to_graph[edge_src] == g_idx, as_tuple=True)[0]
+                if node_indices.numel() > 0:
+                    perm = torch.randperm(node_indices.numel())[:2]
+                    sel_nodes = node_indices[perm]
+                    mask_atom_indices.extend(sel_nodes.tolist())
+                if edge_indices.numel() > 0:
+                    perm_e = torch.randperm(edge_indices.numel())[:2]
+                    sel_edges = edge_indices[perm_e]
+                    for ei in sel_edges:
+                        ei = int(ei.item())
+                        mask_edge_indices.append(ei)
+                        rev_ei = int(b2rev[ei].item())
+                        if rev_ei not in mask_edge_indices:
+                            mask_edge_indices.append(rev_ei)
+            mask_atom_indices = list(set(mask_atom_indices))
+            mask_edge_indices = list(set(mask_edge_indices))
+            if mask_atom_indices:
+                atom_feats[mask_atom_indices] = 0.0
+            if mask_edge_indices:
+                edge_feats[mask_edge_indices] = 0.0
+            pred_node, pred_edge, pred_graph = model(atom_feats, edge_src, edge_dst, edge_feats, edge_weights, b2rev, node_to_graph)
+            loss_node = 0.0
+            loss_edge = 0.0
+            if mask_atom_indices:
+                true_node_feats = batch['atom_feats'].to(device)[mask_atom_indices]
+                pred_node_feats = pred_node[mask_atom_indices]
+                loss_node = F.mse_loss(pred_node_feats, true_node_feats)
+            if mask_edge_indices:
+                true_edge_feats = batch['edge_feats'].to(device)[mask_edge_indices]
+                pred_edge_feats = pred_edge[mask_edge_indices]
+                loss_edge = F.mse_loss(pred_edge_feats, true_edge_feats)
+            true_graph_vals = batch['mol_weights'].to(device)
+            pred_graph_vals = pred_graph
+            loss_graph = F.mse_loss(pred_graph_vals, true_graph_vals)
+            loss = loss_node + loss_edge + loss_graph
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            train_losses.append(loss.item())
+        avg_train_loss = float(np.mean(train_losses)) if train_losses else 0.0
+        model.eval()
+        val_losses = []
         with torch.no_grad():
             for batch in val_loader:
-                batch_graph = batch[0].batch_graph() if hasattr(batch[0], 'batch_graph') else BatchMolGraph([dp.mol[0] if isinstance(dp.mol, list) else dp.mol for dp in batch])
-                # Masking for validation (use the same procedure, though in validation we could mask deterministically or fully since we don't update)
-                num_atoms = sum([atoms for _, atoms in batch_graph.a_scope])
-                num_bonds = batch_graph.num_bonds
-                mask_node_index = torch.zeros(num_atoms, dtype=torch.bool, device=model.graph_head[1].weight.device)
-                mask_edge_index = torch.zeros(num_bonds, dtype=torch.bool, device=model.graph_head[1].weight.device)
-                for (atom_start, atom_count), (bond_start, bond_count) in zip(batch_graph.a_scope, batch_graph.b_scope):
-                    if atom_count > 0:
-                        choose_k = min(2, atom_count)
-                        for ai in random.sample(range(atom_start, atom_start + atom_count), choose_k):
-                            mask_node_index[ai] = True
-                    if bond_count > 0:
-                        choose_k = min(2, bond_count)
-                        for bi in random.sample(range(bond_start, bond_start + bond_count), choose_k):
-                            mask_edge_index[bi] = True
-                batch_graph.f_atoms[mask_node_index.cpu().numpy()] = np.zeros(atom_fdim)
-                batch_graph.f_bonds[mask_edge_index.cpu().numpy()] = np.zeros(bond_fdim)
-                node_pred, edge_pred, graph_pred = model(batch_graph)
-                true_atom_features = torch.tensor(batch_graph.f_atoms, dtype=torch.float32, device=node_pred.device)
-                true_bond_features = torch.tensor(batch_graph.f_bonds, dtype=torch.float32, device=edge_pred.device)
-                true_graph_labels = []
-                for dp in batch:
-                    smi = dp.smiles
-                    idx = smiles_list.index(smi) if smi in smiles_list else None
-                    true_graph_labels.append(graph_labels[idx].item() if idx is not None else 0.0)
-                true_graph_labels = torch.tensor(true_graph_labels, dtype=torch.float32, device=graph_pred.device)
-                node_loss = ((node_pred[mask_node_index] - true_atom_features[mask_node_index]) ** 2).mean() if mask_node_index.any() else 0.0
-                edge_loss = ((edge_pred[mask_edge_index] - true_bond_features[mask_edge_index][:, atom_fdim:]) ** 2).mean() if mask_edge_index.any() else 0.0
-                graph_loss = ((graph_pred - true_graph_labels) ** 2).mean()
-                val_loss += (node_loss + edge_loss + graph_loss).item() * len(batch)
-        val_loss /= len(val_smiles)
+                atom_feats = batch['atom_feats'].to(device)
+                edge_src = batch['edge_src'].to(device)
+                edge_dst = batch['edge_dst'].to(device)
+                edge_feats = batch['edge_feats'].to(device)
+                edge_weights = batch['edge_weights'].to(device) if batch['edge_weights'].numel() > 0 else torch.tensor([], device=device)
+                b2rev = batch['b2rev'].to(device)
+                node_to_graph = batch['node_to_graph'].to(device)
+                mask_atom_indices = []
+                mask_edge_indices = []
+                batch_size = batch['batch_size']
+                for g_idx in range(batch_size):
+                    node_indices = torch.nonzero(node_to_graph == g_idx, as_tuple=True)[0]
+                    edge_indices = torch.nonzero(node_to_graph[edge_src] == g_idx, as_tuple=True)[0]
+                    if node_indices.numel() > 0:
+                        perm = torch.randperm(node_indices.numel())[:2]
+                        sel_nodes = node_indices[perm]
+                        mask_atom_indices.extend(sel_nodes.tolist())
+                    if edge_indices.numel() > 0:
+                        perm_e = torch.randperm(edge_indices.numel())[:2]
+                        sel_edges = edge_indices[perm_e]
+                        for ei in sel_edges:
+                            ei = int(ei.item())
+                            mask_edge_indices.append(ei)
+                            rev_ei = int(b2rev[ei].item())
+                            if rev_ei not in mask_edge_indices:
+                                mask_edge_indices.append(rev_ei)
+                mask_atom_indices = list(set(mask_atom_indices))
+                mask_edge_indices = list(set(mask_edge_indices))
+                if mask_atom_indices:
+                    atom_feats[mask_atom_indices] = 0.0
+                if mask_edge_indices:
+                    edge_feats[mask_edge_indices] = 0.0
+                pred_node, pred_edge, pred_graph = model(atom_feats, edge_src, edge_dst, edge_feats, edge_weights, b2rev, node_to_graph)
+                loss_node = 0.0
+                loss_edge = 0.0
+                if mask_atom_indices:
+                    true_node_feats = batch['atom_feats'].to(device)[mask_atom_indices]
+                    pred_node_feats = pred_node[mask_atom_indices]
+                    loss_node = F.mse_loss(pred_node_feats, true_node_feats)
+                if mask_edge_indices:
+                    true_edge_feats = batch['edge_feats'].to(device)[mask_edge_indices]
+                    pred_edge_feats = pred_edge[mask_edge_indices]
+                    loss_edge = F.mse_loss(pred_edge_feats, true_edge_feats)
+                true_graph_vals = batch['mol_weights'].to(device)
+                pred_graph_vals = pred_graph
+                loss_graph = F.mse_loss(pred_graph_vals, true_graph_vals)
+                loss = loss_node + loss_edge + loss_graph
+                val_losses.append(loss.item())
+        avg_val_loss = float(np.mean(val_losses)) if val_losses else 0.0
+        logging.info(f"Epoch {epoch}/{args.epochs} | Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f}")
+        if avg_val_loss < best_val_loss:
+            best_val_loss = avg_val_loss
+    os.makedirs(args.save_dir, exist_ok=True)
+    save_path = os.path.join(args.save_dir, "model.pt")
+    torch.save(model.state_dict(), save_path)
+    logging.info(f"Saved trained model to {save_path}")
+
+if __name__ == "__main__":
+    if Chem is None:
+        logging.error("RDKit is not installed. Please install RDKit to run this script.")
     else:
-        val_loss = total_train_loss  # if no val set, set val_loss equal to train_loss for monitoring
-    print(f"Epoch {epoch}: Train SSL loss = {total_train_loss:.4f}, Val SSL loss = {val_loss:.4f}")
-    # Check for best model
-    if val_loss < best_val_loss:
-        best_val_loss = val_loss
-        best_state_dict = {k: v.cpu().clone() for k, v in model.state_dict().items()}
-# 4. Save the best SSL-pretrained model in Chemprop format
-if best_state_dict is None:
-    best_state_dict = model.state_dict()
-# Load best weights into model (on CPU)
-model.load_state_dict(best_state_dict)
-model = model.cpu()
-# Build a MoleculeModel for saving (encoder + single output head)
-save_args = Namespace(
-    # basic architecture hyperparams
-    hidden_size=hidden_size,
-    depth=depth,
-    atom_messages=False,
-    undirected=False,
-    num_tasks=1,
-    dataset_type='regression',
-    # features and polymer flags
-    features_generator=None,
-    atom_descriptors=None,
-    atom_features_size=0,
-    bond_features_size=0,
-    polymer=args.polymer
-)
-chemprop_model = MoleculeModel(save_args)
-# Transfer encoder weights
-cp_state = chemprop_model.state_dict()
-for name, param in cp_state.items():
-    # Map our SSLPretrainModel parameters to chemprop's names
-    if name.startswith('encoder.mpn'):
-        # Encoder weights
-        if 'W_i.weight' in name:
-            param.data.copy_(best_state_dict['W_initial.weight'])
-        elif 'W_i.bias' in name:
-            param.data.copy_(best_state_dict['W_initial.bias'])
-        elif 'W_h.weight' in name:
-            param.data.copy_(best_state_dict['W_message.weight'])
-        elif 'W_h.bias' in name:
-            param.data.copy_(best_state_dict['W_message.bias'])
-        elif 'W_atom.weight' in name and 'W_atom' in best_state_dict:
-            param.data.copy_(best_state_dict['W_atom.weight'])
-        elif 'W_atom.bias' in name and 'W_atom' in best_state_dict:
-            param.data.copy_(best_state_dict['W_atom.bias'])
-        else:
-            # For any other encoder params (if any), copy if present
-            if name.replace('encoder.mpn.', '') in best_state_dict:
-                param.data.copy_(best_state_dict[name.replace('encoder.mpn.', '')])
-    elif name.startswith('ffn'):
-        # Initialize Chemprop FFN weights (graph head) from our trained graph_head (use final layer)
-        if name.endswith('.weight') and param.shape == best_state_dict['graph_head.3.weight'].shape:
-            param.data.copy_(best_state_dict['graph_head.3.weight'])
-        elif name.endswith('.bias') and param.shape == best_state_dict['graph_head.3.bias'].shape:
-            param.data.copy_(best_state_dict['graph_head.3.bias'])
-# Save the checkpoint
-save_checkpoint(os.path.join(args.save_dir, 'model.pt'), chemprop_model, save_args)
-print(f"SSL-pretrained model saved to {os.path.join(args.save_dir, 'model.pt')}")
-
-
+        main()
