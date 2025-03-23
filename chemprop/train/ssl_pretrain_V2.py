@@ -387,25 +387,31 @@ def main():
         graphs.append(graph)
     logging.info(f"Built graph structures for {len(graphs)} polymers.")
 
-    # Optional: Visualize 10 random polymer graphs (requires RDKit and IPython display)
-    try:
-        from rdkit.Chem import Draw
-        from IPython.display import display
-        logging.info("Visualizing 10 random polymer graphs...")
-        sample_graphs = random.sample(graphs, min(10, len(graphs)))
-        mol_list = []
-        for g in sample_graphs:
-            try:
-                mol = Chem.MolFromSmiles(g.smiles)
-                if mol is not None:
-                    mol_list.append(mol)
-            except:
-                continue
-        if mol_list:
-            img = Draw.MolsToGridImage(mol_list, molsPerRow=5, subImgSize=(300, 300))
-            display(img)
-        else:
-            print("❌ No valid polymer structures found for visualization.")
+    # Optional: Visualize 10 random polymer graphs 
+    
+        
+    logging.info("Visualizing 10 random polymer graphs...")
+    from rdkit import Chem
+    from rdkit.Chem import Draw
+    from IPython.display import display  # 👈 Required to show image inline
+
+    mol_list = []
+    for g in random.sample(graphs, 10):
+        try:
+            monomers, _, _, _ = parse_polymer_smiles(g.smiles)
+            combined = '.'.join(monomers)
+            mol = Chem.MolFromSmiles(combined)
+            if mol is not None:
+                mol_list.append(mol)
+        except Exception as e:
+            print(f"⚠️ Failed to convert: {g.smiles[:50]}... | {e}")
+
+    if mol_list:
+        img = Draw.MolsToGridImage(mol_list, molsPerRow=5, subImgSize=(300, 300), useSVG=False)
+        display(img)  # 👈 This shows the image inline (works in Jupyter/Colab)
+    else:
+        print("❌ No valid polymer molecules to visualize.")
+        
     except Exception as e:
         logging.warning(f"Visualization skipped: {str(e)}")
 
