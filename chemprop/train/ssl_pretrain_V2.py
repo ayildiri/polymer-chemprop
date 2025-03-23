@@ -86,8 +86,8 @@ if val_size > 0:
     indices = list(range(len(smiles_list)))
     random.shuffle(indices)
     val_indices = set(indices[:val_size])
-    train_smiles = [smiles_list[i] for i in range(len(smiles_list)) if i not in val_indices]
-    val_smiles = [smiles_list[i] for i in range(len(smiles_list)) if i in val_indices]
+    train_smiles = [clean_smi(s) for s in train_smiles]
+    val_smiles = [clean_smi(s) for s in val_smiles]
 else:
     train_smiles = smiles_list
     val_smiles = []
