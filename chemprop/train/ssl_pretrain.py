@@ -99,50 +99,50 @@ def load_polymer_data(path: str, polymer_mode: bool) -> List[str]:
     data = []
     with open(path, 'r') as f:
         header = f.readline().strip().split(',')
-        # Determine which column has the polymer SMILES
+
+        # ✅ Detect which column contains SMILES
         if polymer_mode:
-            # In polymer mode, assume a column named "polymer" or "smiles" contains the combined string
-            if "polymer" in header:
+            if "poly_chemprop_input" in header:
+                smiles_col = header.index("poly_chemprop_input")
+            elif "polymer" in header:
                 smiles_col = header.index("polymer")
             elif "smiles" in header:
                 smiles_col = header.index("smiles")
             else:
-                smiles_col = 0  # assume first column if not labeled
+                smiles_col = 0
         else:
-            # For general use, default to first column as SMILES
             smiles_col = 0
-        # If the file had only one line of header, we already consumed it. Otherwise, current line is first data line.
-        # If no header (single column file), treat the first line as data.
+
+        # 🧠 Handle edge case: file has no header or starts with a SMILES
         first_line = None
-        # If header length is 1 and looks like a SMILES (contains bonds or atoms), treat it as data
         if len(header) == 1 and any(ch in header[0] for ch in ['.', '=', '*', '|']):
-            # No header present, reset file pointer and read all lines
             f.seek(0)
             header = None
         else:
-            # We have a header, use the first line read as first data if it was actual data
             if header and any(ch in header[0] for ch in ['[', '.', '=', '*', '|']):
-                # The supposed header was actually a SMILES line (no real header in file)
-                first_line = header  # rename variable for clarity
+                first_line = header
                 header = None
-        # Now read the rest of the file (including possibly the first line if no real header)
+
         if first_line:
             data.append(','.join(first_line))
+
         for line in f:
             if not line.strip():
                 continue
             data.append(line.strip())
-    # If CSV, each line may have multiple columns; extract the smiles column.
-    if header is not None:  # we had a header row, so data lines are comma-separated
+
+    # ✅ Extract SMILES column if CSV
+    if header is not None:
         polymer_list = []
         for line in data:
             cols = line.split(',')
-            polymer_list.append(cols[smiles_col])
+            if len(cols) > smiles_col:
+                polymer_list.append(cols[smiles_col])
         return polymer_list
     else:
-        # If no header (or single column file), each line is just the polymer string
         return data
 
+   
 def save_smiles_splits(save_dir: str, train_data: List[str], val_data: List[str], test_data: List[str]):
     """Save the SMILES splits to files in the save_dir."""
     os.makedirs(save_dir, exist_ok=True)
