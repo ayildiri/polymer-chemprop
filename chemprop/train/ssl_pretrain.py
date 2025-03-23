@@ -195,8 +195,13 @@ def move_batch_to_device(batch_graph, device):
     batch_graph.a2b = batch_graph.a2b.to(device)
     batch_graph.b2a = batch_graph.b2a.to(device)
     batch_graph.b2revb = batch_graph.b2revb.to(device)
-    batch_graph.atom_weights = batch_graph.atom_weights.to(device)
-    batch_graph.bond_weights = batch_graph.bond_weights.to(device)
+
+    # Optional: move if these exist in your fork (skip if not)
+    if hasattr(batch_graph, "a2a"):
+        batch_graph.a2a = batch_graph.a2a.to(device)
+    if hasattr(batch_graph, "features_batch") and batch_graph.features_batch is not None:
+        batch_graph.features_batch = batch_graph.features_batch.to(device)
+    
     
 def main():
     parser = argparse.ArgumentParser(description="Self-supervised pretraining (Phase 1) for polymer GNN")
