@@ -276,7 +276,7 @@ def main():
                 mol_graphs.append(mg)
             # Batch the MolGraphs into a BatchMolGraph for model input
             batch_graph = BatchMolGraph(mol_graphs)
-            batch_graph = batch_graph.to(model.encoder.device)  # move to GPU if applicable
+            batch_graph.set_tensors(device=model.encoder.device)
             # Forward pass
             node_preds, edge_preds, graph_preds = model(batch_graph)
             # Compute losses
