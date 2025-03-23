@@ -51,8 +51,7 @@ class SSLPretrainModel(nn.Module):
         # Perform message passing to get final atom embeddings.
         # Chemprop's MessagePassing returns a molecule-level embedding by default, 
         # so we use internal methods to get atom-level embeddings.
-        atom_hiddens = self.encoder.forward(batch_graph, return_atom_embeddings=True)
-        # `atom_hiddens` is a tensor of shape (total_atoms_in_batch, hidden_size)
+        atom_hiddens = self.encoder.encoder[0](batch_graph)
         # Obtain graph embeddings by sum-pooling atom embeddings per molecule:
         batch_vecs = batch_graph.batch  # tensor of molecule indices for each atom
         # Sum pool atom embeddings for each molecule in the batch
