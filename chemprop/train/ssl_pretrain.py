@@ -66,18 +66,14 @@ class SSLPretrainModel(nn.Module):
         node_pred = self.node_head(atom_hiddens)  # shape (total_atoms, atom_feat_size)
         # Predict bond features: for each bond, combine the two endpoint atom embeddings.
         # We average the embeddings of the two atoms connected by each bond.
-        E = len(batch_graph.f_bonds)  # total number of directed bonds
+        E = len(batch_graph.f_bonds)
         bond_preds = []
         visited = set()
         
-        # Build mapping: bond index -> mol index
         bond_to_mol = []
         for mol_idx, (start, length) in enumerate(batch_graph.b_scope):
             bond_to_mol.extend([mol_idx] * length)
         bond_to_mol = torch.tensor(bond_to_mol, device=atom_hiddens.device)
-        
-        # Get atom start indices for batching
-        atom_start_indices = [a_start for (a_start, _) in batch_graph.a_scope]
         
         for e in range(E):
             rev_e = batch_graph.b2revb[e].item()
@@ -86,18 +82,26 @@ class SSLPretrainModel(nn.Module):
             visited.add(e)
             visited.add(rev_e)
         
-            # Get atom indices and molecule index
-            a1_local = batch_graph.b2a[e].item()
-            a2_local = batch_graph.b2a[rev_e].item()
             mol_idx = bond_to_mol[e].item()
         
-            a1_idx = atom_start_indices[mol_idx] + a1_local
-            a2_idx = atom_start_indices[mol_idx] + a2_local
+            a1_local = batch_graph.b2a[e].item()
+            a2_local = batch_graph.b2a[rev_e].item()
+        
+            a1_start, _ = batch_graph.a_scope[mol_idx]
+            a2_start, _ = batch_graph.a_scope[mol_idx]
+        
+            a1_idx = a1_start + a1_local
+            a2_idx = a2_start + a2_local
+        
+            if a1_idx >= atom_hiddens.size(0) or a2_idx >= atom_hiddens.size(0):
+                print(f"⚠️  Skipping edge ({e}) due to out-of-bounds atom indices: a1={a1_idx}, a2={a2_idx}")
+                continue
         
             h1 = atom_hiddens[a1_idx]
             h2 = atom_hiddens[a2_idx]
             bond_emb = 0.5 * (h1 + h2)
             bond_preds.append(self.edge_head(bond_emb))
+
 
 
         rev_indices = batch_graph.rev_edge_index  # mapping from edge index to reverse edge index
