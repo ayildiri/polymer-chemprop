@@ -185,7 +185,7 @@ def main():
     # Create model. Determine feature dimensions from a sample polymer:
     sample_poly = train_polymers[0] if train_polymers else polymers[0]
     # Use Chemprop's MolGraph to get feature lengths
-    sample_graph = MolGraph(sample_poly)  # this will parse the SMILES up to '|' if present
+    sample_graph = MolGraph(sample_poly.split('|')[0])  # this will parse the SMILES up to '|' if present
     atom_feat_size = len(sample_graph.f_atoms[0])  # length of atom feature vector
     bond_feat_size = len(sample_graph.f_bonds[0])  # length of bond feature vector
     model = SSLPretrainModel(hidden_size=args.hidden_size, atom_feat_size=atom_feat_size, bond_feat_size=bond_feat_size)
