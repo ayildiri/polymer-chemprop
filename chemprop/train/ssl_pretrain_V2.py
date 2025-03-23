@@ -318,6 +318,13 @@ train_args.number_of_molecules = 1
 train_args.mol_cache_path = None
 train_args.skip_invalid_smiles = True
 
+df = pd.read_csv(data_path)
+if args.polymer:
+    if 'poly_chemprop_input' in df.columns:
+        df['poly_chemprop_input'] = df['poly_chemprop_input'].apply(lambda x: x.split('|')[0])
+        data_path_cleaned = '/content/cleaned_input.csv'
+        df.to_csv(data_path_cleaned, index=False)
+        data_path = data_path_cleaned
 
 train_data = get_data(path=data_path, args=train_args, skip_none_targets=False)
 # Filter train and val sets within train_data based on our indices
