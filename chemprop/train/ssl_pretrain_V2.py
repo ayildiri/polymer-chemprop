@@ -411,6 +411,12 @@ def main():
         except:
             continue
 
+    # Display the molecules as a grid image
+    if mol_list:
+        img = Draw.MolsToGridImage(mol_list, molsPerRow=5, subImgSize=(300, 300))
+        display(img)
+    else:
+        print("❌ No valid polymer structures to visualize.")
     
     random.shuffle(graphs)
     val_count = int(len(graphs) * args.val_frac)
