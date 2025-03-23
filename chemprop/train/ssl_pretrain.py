@@ -14,25 +14,39 @@ import torch.optim as optim
 from chemprop.data import MoleculeDatapoint, MoleculeDataset
 from chemprop.features import BatchMolGraph, MolGraph
 from chemprop.models.mpn import MPN  # ✅ wD-MPNN encoder
-
+from chemprop.args import TrainArgs
 
 
 class SSLPretrainModel(nn.Module):
     """Chemprop-based GNN with separate heads for node, edge, and graph tasks."""
     def __init__(self, hidden_size: int, atom_feat_size: int, bond_feat_size: int):
         super(SSLPretrainModel, self).__init__()
-        # Message passing encoder (wD-MPNN) from Chemprop
-        self.encoder = MPN (hidden_size=hidden_size)  # uses default depth & chemprop settings
-        # Prediction heads
+
+        # ✅ Create TrainArgs and set relevant fields
+        args = TrainArgs()
+        args.hidden_size = hidden_size
+        args.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        args.atom_messages = False                  # or True if desired
+        args.number_of_molecules = 1
+        args.mpn_shared = True
+        args.depth = 3                              # as in the paper
+        args.dropout = 0.0                          # default dropout
+        args.aggregation = 'mean'                   # or 'sum', etc.
+
+        # ✅ Chemprop message passing encoder (MPN)
+        self.encoder = MPN(args=args)
+
+        # 🔁 Prediction heads
         self.node_head = nn.Linear(hidden_size, atom_feat_size)         # node feature reconstruction
         self.edge_head = nn.Linear(hidden_size, bond_feat_size)         # bond feature reconstruction
-        # Graph head: a two-layer MLP for molecular weight prediction
+
+        # 📐 Graph head: a two-layer MLP for ensemble molecular weight prediction
         self.graph_head = nn.Sequential(
             nn.Linear(hidden_size, hidden_size),
             nn.ReLU(),
             nn.Linear(hidden_size, 1)
         )
-    
+
     def forward(self, batch_graph: BatchMolGraph):
         # Perform message passing to get final atom embeddings.
         # Chemprop's MessagePassing returns a molecule-level embedding by default, 
