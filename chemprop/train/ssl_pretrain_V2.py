@@ -300,6 +300,8 @@ train_args = Namespace(
     polymer=args.polymer
 )
 train_args.ignore_columns = []
+train_args.overwrite_default_atom_features = False
+train_args.overwrite_default_bond_features = False
 train_args.features_path = None
 train_args.features_generator = []
 train_args.phase_features_path = None
