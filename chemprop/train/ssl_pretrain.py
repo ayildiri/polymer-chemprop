@@ -62,7 +62,7 @@ class SSLPretrainModel(nn.Module):
 
     def forward(self, batch_graph: BatchMolGraph):
         if not hasattr(batch_graph, 'rev_edge_index'):
-        batch_graph.rev_edge_index = self.get_rev_edge_index(batch_graph.edge_index)
+            batch_graph.rev_edge_index = self.get_rev_edge_index(batch_graph.edge_index)
 
         rev_indices = batch_graph.rev_edge_index
         # Perform message passing to get final atom embeddings.
