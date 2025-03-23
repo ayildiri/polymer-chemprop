@@ -12,6 +12,7 @@ import random
 import argparse
 import numpy as np
 import pandas as pd
+from IPython.display import display
 try:
     from rdkit import Chem
     from rdkit.Chem import rdchem
@@ -404,7 +405,7 @@ def main():
         if mols:
             img = Draw.MolsToGridImage(mols, molsPerRow=5, subImgSize=(300, 300),
                                        legends=[f"Mol {i}" for i in range(len(mols))])
-            img.show()  # Or use img.save(...) to save
+            display(img)
         else:
             logging.warning("No valid molecules for visualization.")
   
