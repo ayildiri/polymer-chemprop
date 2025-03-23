@@ -188,7 +188,16 @@ def save_smiles_splits(save_dir: str, train_data: List[str], val_data: List[str]
         with open(os.path.join(save_dir, "smiles_test.csv"), 'w') as f:
             for s in test_data:
                 f.write(s + "\n")
-
+                
+def move_batch_to_device(batch_graph, device):
+    batch_graph.f_atoms = batch_graph.f_atoms.to(device)
+    batch_graph.f_bonds = batch_graph.f_bonds.to(device)
+    batch_graph.a2b = batch_graph.a2b.to(device)
+    batch_graph.b2a = batch_graph.b2a.to(device)
+    batch_graph.b2revb = batch_graph.b2revb.to(device)
+    batch_graph.atom_weights = batch_graph.atom_weights.to(device)
+    batch_graph.bond_weights = batch_graph.bond_weights.to(device)
+    
 def main():
     parser = argparse.ArgumentParser(description="Self-supervised pretraining (Phase 1) for polymer GNN")
     parser.add_argument('--data_path', type=str, required=True, help="Path to the unlabeled polymer data (CSV or TXT).")
@@ -276,7 +285,7 @@ def main():
                 mol_graphs.append(mg)
             # Batch the MolGraphs into a BatchMolGraph for model input
             batch_graph = BatchMolGraph(mol_graphs)
-            batch_graph.set_tensors(device=model.encoder.device)
+            move_batch_to_device(batch_graph, model.encoder.device)
             # Forward pass
             node_preds, edge_preds, graph_preds = model(batch_graph)
             # Compute losses
