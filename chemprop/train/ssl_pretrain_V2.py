@@ -302,6 +302,7 @@ train_args = Namespace(
 train_args.ignore_columns = []
 train_args.features_path = None
 train_args.features_generator = []
+train_args.phase_features_path = None
 train_args.atom_descriptors = None
 train_args.bond_descriptors = None
 train_args.max_data_size = None
