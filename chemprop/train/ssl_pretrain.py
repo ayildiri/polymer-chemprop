@@ -52,13 +52,17 @@ class SSLPretrainModel(nn.Module):
         # Chemprop's MessagePassing returns a molecule-level embedding by default, 
         # so we use internal methods to get atom-level embeddings.
         atom_hiddens = self.encoder.encoder[0](batch_graph)
-        # Obtain graph embeddings by sum-pooling atom embeddings per molecule:
-        batch_vecs = batch_graph.batch  # tensor of molecule indices for each atom
-        # Sum pool atom embeddings for each molecule in the batch
-        graph_embeddings = torch.zeros(batch_graph.batch[-1].item() + 1, atom_hiddens.size(1))
-        graph_embeddings = graph_embeddings.to(atom_hiddens.device)  # match device
-        graph_embeddings.index_add_(0, batch_vecs, atom_hiddens)
-        # Predict node features for each atom embedding
+        # batch_graph.atom_scope is a list of (start_index, num_atoms) for each molecule
+        graph_embeddings = []
+        for (start, size) in batch_graph.atom_scope:
+            if size == 0:
+                mol_embedding = torch.zeros(atom_hiddens.size(1), device=atom_hiddens.device)
+            else:
+                mol_embedding = atom_hiddens[start:start+size].sum(dim=0)
+            graph_embeddings.append(mol_embedding)
+        
+        graph_embeddings = torch.stack(graph_embeddings, dim=0)  # (num_molecules, hidden_size)
+
         node_pred = self.node_head(atom_hiddens)  # shape (total_atoms, atom_feat_size)
         # Predict bond features: for each bond, combine the two endpoint atom embeddings.
         # We average the embeddings of the two atoms connected by each bond.
