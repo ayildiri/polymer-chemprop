@@ -300,6 +300,18 @@ train_args = Namespace(
     polymer=args.polymer
 )
 train_args.ignore_columns = []
+train_args.features_path = None
+train_args.features_generator = []
+train_args.atom_descriptors = None
+train_args.bond_descriptors = None
+train_args.max_data_size = None
+train_args.cache_cutoff = 1e7
+train_args.no_cache = True
+train_args.smiles_columns = ["smiles"]
+train_args.target_columns = []
+train_args.number_of_molecules = 1
+train_args.mol_cache_path = None
+train_args.skip_invalid_smiles = True
 train_data = get_data(path=data_path, args=train_args, skip_none_targets=True)
 # Filter train and val sets within train_data based on our indices
 train_idx_set = set(df.index[df[smiles_col].isin(train_smiles)])
