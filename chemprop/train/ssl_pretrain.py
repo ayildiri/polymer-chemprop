@@ -99,8 +99,8 @@ class SSLPretrainModel(nn.Module):
             a1_start, _ = batch_graph.a_scope[mol_idx]
             a2_start, _ = batch_graph.a_scope[mol_idx]
     
-            a1_idx = a1_start + a1_local
-            a2_idx = a2_start + a2_local
+            a1_idx = batch_graph.b2a[e].item()
+            a2_idx = batch_graph.b2a[rev_e].item()
     
             if a1_idx >= atom_hiddens.size(0) or a2_idx >= atom_hiddens.size(0):
                 print(f"⚠️  Skipping edge ({e}) due to out-of-bounds atom indices: a1={a1_idx}, a2={a2_idx}")
@@ -333,7 +333,7 @@ def main():
             for (mol_idx, atom_idx), orig_feat in zip(pred_node_indices, original_node_feats):
                 # Find the global index of this atom in the batched graph
                 # BatchMolGraph stores a mapping of molecule index to atom indices range
-                global_atom_index = batch_graph.atom_start_indices[mol_idx] + atom_idx
+                global_atom_index = batch_graph.a_scope[mol_idx][0] + atom_idx
                 orig = torch.tensor(orig_feat, dtype=torch.float32, device=node_preds.device)
                 pred = node_preds[global_atom_index]
                 node_loss += torch.mean((pred - orig)**2)  # MSE for that node (averaged over feature components)
