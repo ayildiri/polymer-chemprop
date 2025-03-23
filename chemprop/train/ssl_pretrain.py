@@ -61,88 +61,62 @@ class SSLPretrainModel(nn.Module):
 
 
     def forward(self, batch_graph: BatchMolGraph):
-        if not hasattr(batch_graph, 'rev_edge_index'):
-            batch_graph.rev_edge_index = self.get_rev_edge_index(batch_graph.edge_index)
+    # Perform message passing to get final atom embeddings
+    atom_hiddens = self.encoder.encoder[0](batch_graph)
 
-        rev_indices = batch_graph.rev_edge_index
-        # Perform message passing to get final atom embeddings.
-        # Chemprop's MessagePassing returns a molecule-level embedding by default, 
-        # so we use internal methods to get atom-level embeddings.
-        atom_hiddens = self.encoder.encoder[0](batch_graph)
-        # batch_graph.atom_scope is a list of (start_index, num_atoms) for each molecule
-        graph_embeddings = []
-        for (start, size) in batch_graph.a_scope:
-            if size == 0:
-                mol_embedding = torch.zeros(atom_hiddens.size(1), device=atom_hiddens.device)
-            else:
-                mol_embedding = atom_hiddens[start:start+size].sum(dim=0)
-            graph_embeddings.append(mol_embedding)
-        
-        graph_embeddings = torch.stack(graph_embeddings, dim=0)  # (num_molecules, hidden_size)
+    # Graph-level (molecule-level) embeddings
+    graph_embeddings = []
+    for (start, size) in batch_graph.a_scope:
+        if size == 0:
+            mol_embedding = torch.zeros(atom_hiddens.size(1), device=atom_hiddens.device)
+        else:
+            mol_embedding = atom_hiddens[start:start+size].sum(dim=0)
+        graph_embeddings.append(mol_embedding)
+    graph_embeddings = torch.stack(graph_embeddings, dim=0)  # (num_molecules, hidden_size)
 
-        node_pred = self.node_head(atom_hiddens)  # shape (total_atoms, atom_feat_size)
-        # Predict bond features: for each bond, combine the two endpoint atom embeddings.
-        # We average the embeddings of the two atoms connected by each bond.
-        E = len(batch_graph.f_bonds)
-        bond_preds = []
-        visited = set()
-        
-        bond_to_mol = []
-        for mol_idx, (start, length) in enumerate(batch_graph.b_scope):
-            bond_to_mol.extend([mol_idx] * length)
-        bond_to_mol = torch.tensor(bond_to_mol, device=atom_hiddens.device)
-        
-        for e in range(len(batch_graph.f_bonds)):
-            rev_e = batch_graph.b2revb[e].item()
-            if rev_e in visited:
-                continue
-            visited.add(e)
-            visited.add(rev_e)
-        
-            mol_idx = bond_to_mol[e].item()
-        
-            a1_local = batch_graph.b2a[e].item()
-            a2_local = batch_graph.b2a[rev_e].item()
-        
-            a1_start, a1_len = batch_graph.a_scope[mol_idx]
-            a2_start, a2_len = batch_graph.a_scope[mol_idx]
-        
-            a1_idx = a1_start + a1_local
-            a2_idx = a2_start + a2_local
-        
-            if a1_idx >= atom_hiddens.size(0) or a2_idx >= atom_hiddens.size(0):
-                print(f"⚠️  Skipping edge ({e}) due to out-of-bounds atom indices: a1={a1_idx}, a2={a2_idx}")
-                continue
-        
-            h1 = atom_hiddens[a1_idx]
-            h2 = atom_hiddens[a2_idx]
-            bond_emb = 0.5 * (h1 + h2)
-            bond_preds.append(self.edge_head(bond_emb))
+    # Node-level prediction
+    node_pred = self.node_head(atom_hiddens)  # shape (total_atoms, atom_feat_size)
 
+    # Edge-level prediction
+    bond_preds = []
+    visited = set()
+    bond_to_mol = []
+    for mol_idx, (start, length) in enumerate(batch_graph.b_scope):
+        bond_to_mol.extend([mol_idx] * length)
+    bond_to_mol = torch.tensor(bond_to_mol, device=atom_hiddens.device)
 
+    for e in range(len(batch_graph.f_bonds)):
+        rev_e = batch_graph.b2revb[e].item()
+        if rev_e in visited:
+            continue
+        visited.add(e)
+        visited.add(rev_e)
 
-        rev_indices = batch_graph.rev_edge_index  # mapping from edge index to reverse edge index
-        bond_preds: List[torch.Tensor] = []
-        visited = set()
-        for e in range(E):
-            rev_e = rev_indices[e].item()
-            if rev_e in visited:
-                continue  # skip reverse edge once we've handled the pair
-            visited.add(e); visited.add(rev_e)
-            # endpoints of edge e:
-            a1_idx, a2_idx = batch_graph.edge_index[:, e]
-            # endpoints of reverse (should be a2 -> a1)
-            # a1_idx_rev, a2_idx_rev = batch_graph.edge_index[:, rev_e]  # a2_idx_rev == a1_idx
-            # Get atom embeddings
-            h1 = atom_hiddens[a1_idx]; h2 = atom_hiddens[a2_idx]
-            bond_emb = 0.5 * (h1 + h2)
-            bond_preds.append(self.edge_head(bond_emb))  # predict original bond features
-        edge_pred = torch.stack(bond_preds, dim=0) if bond_preds else torch.empty(0, batch_graph.num_edge_features)
-        # Predict graph-level property (ensemble molecular weight) for each molecule
-        graph_pred = self.graph_head(graph_embeddings)  # shape (batch_size, 1)
-        return node_pred, edge_pred, graph_pred
+        mol_idx = bond_to_mol[e].item()
+        a1_local = batch_graph.b2a[e].item()
+        a2_local = batch_graph.b2a[rev_e].item()
 
-        
+        a1_start, _ = batch_graph.a_scope[mol_idx]
+        a2_start, _ = batch_graph.a_scope[mol_idx]
+
+        a1_idx = a1_start + a1_local
+        a2_idx = a2_start + a2_local
+
+        if a1_idx >= atom_hiddens.size(0) or a2_idx >= atom_hiddens.size(0):
+            print(f"⚠️  Skipping edge ({e}) due to out-of-bounds atom indices: a1={a1_idx}, a2={a2_idx}")
+            continue
+
+        h1 = atom_hiddens[a1_idx]
+        h2 = atom_hiddens[a2_idx]
+        bond_emb = 0.5 * (h1 + h2)
+        bond_preds.append(self.edge_head(bond_emb))
+
+    edge_pred = torch.stack(bond_preds, dim=0) if bond_preds else torch.empty(0, batch_graph.num_edge_features)
+
+    # Graph-level prediction
+    graph_pred = self.graph_head(graph_embeddings)  # shape (batch_size, 1)
+
+    return node_pred, edge_pred, graph_pred
 
 
 def safe_float(x):
