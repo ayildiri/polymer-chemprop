@@ -26,184 +26,86 @@ parser.add_argument('--save_smiles_splits', action='store_true', help='If set, s
 args = parser.parse_args()
 
 # 1. Data Loading and Preprocessing
-data_path = args.data_path
-# Determine if the file has a header and identify the column with polymer (or molecule) SMILES
-with open(data_path, 'r') as f:
-    first_line = f.readline().strip()
-# Heuristic: assume header if the first token is non-smiles (alphabetic and not too long)
-tokens = first_line.split(',')
-has_header = any(char.isalpha() for char in tokens[0]) and len(tokens[0]) < 20
-# Read the file into a DataFrame
-if data_path.endswith('.csv') or data_path.endswith('.txt'):
-    df = pd.read_csv(data_path, header=0 if has_header else None)
+# Read input data
+if args.data_path.endswith('.csv') or args.data_path.endswith('.txt'):
+    df = pd.read_csv(args.data_path)
 else:
     raise ValueError("Unsupported file format: only CSV or TXT files are allowed.")
-# If no header provided, assign default column name for the first column
-if not has_header:
-    df.columns = ['smiles'] + [f"prop_{i}" for i in range(1, len(df.columns))]
-# Identify the column name that contains the polymer/molecule SMILES
+
+# Detect SMILES column
 smiles_col_candidates = ['smiles', 'SMILES', 'structure', 'polymer', 'poly_chemprop_input']
-smiles_col = None
-for col in df.columns:
-    if col in smiles_col_candidates:
-        smiles_col = col
-        break
-if smiles_col is None:
-    # Default to first column if no known name is found
-    smiles_col = df.columns[0]
-smiles_list = df[smiles_col].astype(str).tolist()
+smiles_col = next((col for col in df.columns if col in smiles_col_candidates), df.columns[0])
 
-# If polymer flag is set, process polymer SMILES:
-# - Remove the optional degree of polymerization (~Xn) from each string
-# - (The connectivity info after '|' is retained for graph construction)
+# Clean polymer SMILES if needed
+def clean_smi(s):
+    return s.split('~')[0].split('|')[0].strip()
+
 if args.polymer:
-    processed_smiles = []
-    for s in smiles_list:
-        # Remove anything after ~ (degree of polymerization), if present
-        if '~' in s:
-            s = s.split('~')[0]
-        processed_smiles.append(s)
-    smiles_list = processed_smiles
-
-# If using only a fraction of data for pretraining, sample that fraction
-total_data = len(smiles_list)
-if args.pretrain_frac < 1.0:
-    use_count = math.floor(total_data * args.pretrain_frac)
-    if use_count < 1:
-        use_count = 1
-    # Fix a seed for reproducibility of the subset
-    random.seed(0)
-    subset_indices = random.sample(range(total_data), use_count)
-    subset_indices.sort()
-    smiles_list = [smiles_list[i] for i in subset_indices]
-    df = df.iloc[subset_indices].reset_index(drop=True)
-
-# Split data into training and validation sets (e.g., 90%/10% split)
-# (Validation is used to monitor SSL loss, though labels are pseudo, to avoid overfitting)
-val_size = max(1, int(0.1 * len(smiles_list))) if len(smiles_list) > 1 else 0
-if val_size > 0:
-    random.seed(0)
-    indices = list(range(len(smiles_list)))
-    random.shuffle(indices)
-    val_indices = set(indices[:val_size])
-    train_smiles = [clean_smi(s) for s in train_smiles]
-    val_smiles = [clean_smi(s) for s in val_smiles]
+    df['cleaned_smiles'] = df[smiles_col].astype(str).apply(clean_smi)
 else:
-    train_smiles = smiles_list
-    val_smiles = []
+    df['cleaned_smiles'] = df[smiles_col].astype(str)
 
-# Optionally save the SMILES splits to disk for reproducibility
+smiles_list = df['cleaned_smiles'].tolist()
+
+# Split train/val
+val_size = max(1, int(0.1 * len(smiles_list)))
+indices = list(range(len(smiles_list)))
+random.seed(0)
+random.shuffle(indices)
+val_indices = set(indices[:val_size])
+train_indices = set(indices[val_size:])
+
+train_smiles = [smiles_list[i] for i in train_indices]
+val_smiles = [smiles_list[i] for i in val_indices]
+
+# Save split if requested
 os.makedirs(args.save_dir, exist_ok=True)
 if args.save_smiles_splits:
-    train_path = os.path.join(args.save_dir, "smiles_train.txt")
-    val_path = os.path.join(args.save_dir, "smiles_val.txt")
-    with open(train_path, 'w') as f:
-        for smi in train_smiles:
-            f.write(f"{smi}\n")
-    if val_smiles:
-        with open(val_path, 'w') as f:
-            for smi in val_smiles:
-                f.write(f"{smi}\n")
+    with open(os.path.join(args.save_dir, 'smiles_train.txt'), 'w') as f:
+        f.write('\n'.join(train_smiles) + '\n')
+    with open(os.path.join(args.save_dir, 'smiles_val.txt'), 'w') as f:
+        f.write('\n'.join(val_smiles) + '\n')
 
-# Compute graph-level pseudo-labels: ensemble polymer molecular weight
-graph_labels = []
-# Precompute atomic masses for efficiency (H through major elements, fallback to periodic table via RDKit if available)
-try:
-    from rdkit.Chem import Descriptors, MolFromSmiles
-except ImportError:
-    MolFromSmiles = None
+# Reload clean data for Chemprop
+df_out = df.copy()
+df_out[smiles_col] = df_out['cleaned_smiles']
+data_path_cleaned = os.path.join(args.save_dir, 'cleaned_data.csv')
+df_out.to_csv(data_path_cleaned, index=False)
 
-for smi in smiles_list:
-    # Calculate ensemble molecular weight = sum(weight of each monomer * its fraction)
-    ensemble_weight = 0.0
-    if args.polymer and '|' in smi:
-        # Split polymer string into monomer part and ratio part
-        main_part, *rest = smi.split('|')
-        monomer_smiles = main_part  # part before first '|'
-        # Extract numeric ratio values from the rest (ignore connectivity descriptors with '<')
-        ratios = []
-        for token in rest:
-            if token == '' or '<' in token:
-                break  # stop at connectivity info
-            try:
-                ratios.append(float(token))
-            except:
-                pass
-        if not ratios:
-            ratios = [1.0]  # if no ratios provided, assume single monomer with fraction 1
-        # In case of a single monomer, ensure ratio list length matches number of monomers (which will be 1)
-        # Split monomer SMILES by '.' to handle multi-monomer ensembles
-        monomers = monomer_smiles.split('.')
-        if len(ratios) != len(monomers):
-            # Normalize or pad ratios if needed
-            ratios = ratios[:len(monomers)]
-            if len(ratios) < len(monomers):
-                ratios += [1.0] * (len(monomers) - len(ratios))
-            total = sum(ratios)
-            ratios = [r/total for r in ratios] if total > 0 else [1.0] * len(ratios)
-        # Calculate molecular weight of each monomer fragment
-        weights = []
-        for mono in monomers:
-            # Use RDKit for exact molecular weight if available
-            if MolFromSmiles:
-                mol = MolFromSmiles(mono)
-            else:
-                mol = None
-            if mol:
-                # Calculate molecular weight excluding dummy atoms (symbol '*')
-                mass = 0.0
-                for atom in mol.GetAtoms():
-                    if atom.GetSymbol() != '*':
-                        mass += atom.GetMass()
-                weights.append(mass)
-            else:
-                # Fallback: approximate mass by summing atomic masses from symbols
-                # (Assume uppercase letters as element start, handle simple cases)
-                mass = 0.0
-                elem = ""
-                for char in mono:
-                    if char.isalpha():
-                        if char.isupper():
-                            # new element symbol starts
-                            if elem:
-                                # add previous element mass
-                                # simple periodic table subset
-                                mass += {"H":1.008,"B":10.81,"C":12.01,"N":14.01,"O":16.00,"F":19.00,"P":30.97,"S":32.06,"Cl":35.45}.get(elem, 0.0)
-                            elem = char
-                        else:
-                            # lowercase letter, continue element symbol
-                            elem += char
-                    elif char.isdigit():
-                        continue  # skip digits (would handle count, but assume monomer SMILES explicitly list all atoms)
-                    else:
-                        # wildcard or bond, flush current element
-                        if elem:
-                            mass += {"H":1.008,"B":10.81,"C":12.01,"N":14.01,"O":16.00,"F":19.00,"P":30.97,"S":32.06,"Cl":35.45}.get(elem, 0.0)
-                        elem = ""
-                if elem:
-                    mass += {"H":1.008,"B":10.81,"C":12.01,"N":14.01,"O":16.00,"F":19.00,"P":30.97,"S":32.06,"Cl":35.45}.get(elem, 0.0)
-                weights.append(mass)
-        # Compute weighted sum of monomer masses
-        ensemble_weight = sum(w * r for w, r in zip(weights, ratios))
-    else:
-        # Non-polymer or no '|' present: treat the whole SMILES as one molecule
-        if MolFromSmiles:
-            mol = MolFromSmiles(smi)
-        else:
-            mol = None
-        mass = 0.0
-        if mol:
-            for atom in mol.GetAtoms():
-                if atom.GetSymbol() != '*':
-                    mass += atom.GetMass()
-        else:
-            # Approximate for simple molecules
-            for ch in smi:
-                if ch.isalpha() and ch.isupper():
-                    mass += {"H":1.008,"B":10.81,"C":12.01,"N":14.01,"O":16.00,"F":19.00,"P":30.97,"S":32.06,"Cl":35.45}.get(ch, 0.0)
-        ensemble_weight = mass
-    graph_labels.append(ensemble_weight)
-graph_labels = torch.tensor(graph_labels, dtype=torch.float32)
+# Set up train_args
+train_args = Namespace(
+    smiles_columns=[smiles_col],
+    target_columns=[],
+    dataset_type='regression',
+    max_data_size=None,
+    skip_invalid_smiles=True,
+    seed=0,
+    polymer=args.polymer,
+    ignore_columns=[],
+    overwrite_default_atom_features=False,
+    overwrite_default_bond_features=False,
+    features_path=None,
+    features_generator=[],
+    phase_features_path=None,
+    atom_descriptors=None,
+    atom_descriptors_path=None,
+    bond_descriptors=None,
+    bond_features_path=None,
+    cache_cutoff=1e7,
+    no_cache=True,
+    number_of_molecules=1,
+    mol_cache_path=None
+)
+
+# Load MoleculeDataset
+train_data = get_data(path=data_path_cleaned, args=train_args, skip_none_targets=False)
+print(f"✅ Total loaded molecules: {len(train_data)}")
+
+# Select final training dataset
+train_dataset = [dp for dp in train_data if clean_smi(dp.smiles) in train_smiles]
+val_dataset = [dp for dp in train_data if clean_smi(dp.smiles) in val_smiles]
+print(f"✅ Final train_dataset size: {len(train_dataset)}")
+print(f"✅ Final val_dataset size: {len(val_dataset)}")
 
 # 2. Define the SSL Pretraining Model (Encoder + Multi-head outputs)
 class SSLPretrainModel(nn.Module):
