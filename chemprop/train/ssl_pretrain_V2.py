@@ -317,7 +317,7 @@ train_args.mol_cache_path = None
 train_args.skip_invalid_smiles = True
 
 
-train_data = get_data(path=data_path, args=train_args, skip_none_targets=True)
+train_data = get_data(path=data_path, args=train_args, skip_none_targets=False)
 # Filter train and val sets within train_data based on our indices
 train_idx_set = set(df.index[df[smiles_col].isin(train_smiles)])
 val_idx_set = set(df.index[df[smiles_col].isin(val_smiles)])
