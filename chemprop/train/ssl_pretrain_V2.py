@@ -319,19 +319,60 @@ train_args.mol_cache_path = None
 train_args.skip_invalid_smiles = True
 
 df = pd.read_csv(data_path)
+
+# --- Clean SMILES column ---
 if args.polymer:
     if 'poly_chemprop_input' in df.columns:
-        df['poly_chemprop_input'] = df['poly_chemprop_input'].apply(lambda x: x.split('|')[0])
-        data_path_cleaned = '/content/cleaned_input.csv'
-        df.to_csv(data_path_cleaned, index=False)
-        data_path = data_path_cleaned
+        smiles_col = 'poly_chemprop_input'
+    elif 'polymer' in df.columns:
+        smiles_col = 'polymer'
+    else:
+        raise ValueError("❌ SMILES column not found in CSV.")
 
+    # Strip at the '|' and '~'
+    def clean_smiles(s):
+        return s.split('~')[0].split('|')[0].strip()
+
+    df['cleaned_smiles'] = df[smiles_col].apply(clean_smiles)
+
+    # Save cleaned SMILES to new CSV (for Chemprop loading)
+    data_path_cleaned = '/content/cleaned_input.csv'
+    df_out = df.copy()
+    df_out[smiles_col] = df['cleaned_smiles']
+    df_out.to_csv(data_path_cleaned, index=False)
+    data_path = data_path_cleaned
+else:
+    # Fallback for non-polymer mode
+    smiles_col = 'smiles'
+    df['cleaned_smiles'] = df[smiles_col]
+
+# --- Load Chemprop-formatted MoleculeDataset ---
 train_data = get_data(path=data_path, args=train_args, skip_none_targets=False)
-# Filter train and val sets within train_data based on our indices
-train_idx_set = set(df.index[df[smiles_col].isin(train_smiles)])
-val_idx_set = set(df.index[df[smiles_col].isin(val_smiles)])
+print(f"✅ Total loaded molecules: {len(train_data)}")
+
+# --- Filter train/val using cleaned SMILES ---
+train_idx_set = set(df.index[df['cleaned_smiles'].isin(train_smiles)])
+val_idx_set = set(df.index[df['cleaned_smiles'].isin(val_smiles)])
+
+print("✅ train_idx_set size:", len(train_idx_set))
+print("✅ val_idx_set size:", len(val_idx_set))
+
+# --- Apply optional pretrain_frac ---
+if args.pretrain_frac < 1.0:
+    num_total = len(train_data)
+    num_sample = int(args.pretrain_frac * num_total)
+    if num_sample == 0:
+        raise ValueError("❌ pretrain_frac too small — results in 0 molecules. Increase it.")
+    train_data = train_data[:num_sample]
+    print(f"✅ Using {num_sample} molecules for pretraining ({args.pretrain_frac*100:.1f}%)")
+
+# --- Final Dataset splits ---
 train_dataset = [dp for i, dp in enumerate(train_data) if i in train_idx_set]
 val_dataset = [dp for i, dp in enumerate(train_data) if i in val_idx_set]
+print("✅ Final train_dataset size:", len(train_dataset))
+print("✅ Final val_dataset size:", len(val_dataset))
+
+# --- Create DataLoaders ---
 train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, collate_fn=lambda x: x)
 val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, collate_fn=lambda x: x)
 
