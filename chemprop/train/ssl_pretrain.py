@@ -76,7 +76,7 @@ class SSLPretrainModel(nn.Module):
 def compute_ensemble_weight(polymer_smiles: str):
     """Compute ensemble molecular weight from a polymer SMILES with monomer ratio using RDKit."""
     # Parse polymer SMILES format: "Monomer1.SMILES.Monomer2.SMILES|w1|w2|..."
-    parts = polymer_smiles.split('|')
+    parts = polymer_smiles.split('|')[0]
     monomer_smiles_part = parts[0]  # e.g. "C=C.CCC" (monomerA.SMILES + '.' + monomerB.SMILES)
     monomer_weights = [float(x) for x in parts[1:-1]]  # all parts except first (SMILES) and last (maybe architecture)
     # Split the monomer SMILES on the dot to get each monomer
