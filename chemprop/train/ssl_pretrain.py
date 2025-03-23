@@ -246,7 +246,8 @@ def main():
                     mw = 0.0  # (If not polymer mode, no graph pseudo-label; but in polymer mode we always compute)
                 graph_targets.append(mw)
                 # Create MolGraph for the polymer (Chemprop will parse the SMILES into atoms/bonds)
-                mg = MolGraph(smi if args.polymer else smi)
+                cleaned_smi = smi.split('|')[0] if args.polymer else smi
+                mg = MolGraph(cleaned_smi)
                 n_atoms = mg.n_atoms
                 n_bonds = mg.n_bonds  # number of *directed* bonds
                 # Randomly choose 2 atom indices to mask (if available)
