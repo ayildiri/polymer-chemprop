@@ -386,7 +386,10 @@ def main():
             continue
         graphs.append(graph)
     logging.info(f"Built graph structures for {len(graphs)} polymers.")
-
+    if len(graphs) == 0:
+        logging.error("No valid polymer graphs could be constructed. Exiting.")
+        return
+    
     # Optional: Visualize 10 random polymer graphs 
     
         
@@ -411,31 +414,9 @@ def main():
         display(img)  # 👈 This shows the image inline (works in Jupyter/Colab)
     else:
         print("❌ No valid polymer molecules to visualize.")
-  
-    for g in sample_graphs:
-        try:
-            # Get SMILES (handle fallback in case .smiles is not set)
-            smi = getattr(g, 'smiles', None)
-            if smi is None:
-                continue
-            # Strip ~Xn and |connectivity
-            mol_smi = smi.split('~')[0].split('|')[0].strip()
-            mol = Chem.MolFromSmiles(mol_smi)
-            if mol:
-                mol_list.append(mol)
-        except Exception as e:
-            logging.warning(f"Could not visualize polymer: {e}")
+
+
     
-    # Display polymers in a grid
-    if mol_list:
-        img = Draw.MolsToGridImage(mol_list, molsPerRow=5, subImgSize=(300, 300))
-        display(img)
-    else:
-        print("❌ No valid polymer structures found in poly_chemprop_input")
-  
-    if len(graphs) == 0:
-        logging.error("No valid polymer graphs could be constructed. Exiting.")
-        return
     random.shuffle(graphs)
     val_count = int(len(graphs) * args.val_frac)
     val_graphs = graphs[:val_count]
