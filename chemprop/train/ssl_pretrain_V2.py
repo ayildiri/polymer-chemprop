@@ -12,7 +12,7 @@ import random
 import argparse
 import numpy as np
 import pandas as pd
-from IPython.display import display
+
 try:
     from rdkit import Chem
     from rdkit.Chem import rdchem
@@ -386,28 +386,30 @@ def main():
         graphs.append(graph)
     logging.info(f"Built graph structures for {len(graphs)} polymers.")
 
-    try:
-        from rdkit.Chem import Draw
-        from rdkit import Chem
-        import matplotlib.pyplot as plt
-    except ImportError:
-        logging.warning("RDKit or matplotlib not available; skipping graph visualization.")
+    logging.info("Visualizing 10 random polymer graphs...")
+    sample_graphs = random.sample(graphs, 10)
+    mol_list = []
+    
+    for g in sample_graphs:
+        try:
+            # Get SMILES (handle fallback in case .smiles is not set)
+            smi = getattr(g, 'smiles', None)
+            if smi is None:
+                continue
+            # Strip ~Xn and |connectivity
+            mol_smi = smi.split('~')[0].split('|')[0].strip()
+            mol = Chem.MolFromSmiles(mol_smi)
+            if mol:
+                mol_list.append(mol)
+        except Exception as e:
+            logging.warning(f"Could not visualize polymer: {e}")
+    
+    # Display polymers in a grid
+    if mol_list:
+        img = Draw.MolsToGridImage(mol_list, molsPerRow=5, subImgSize=(300, 300))
+        display(img)
     else:
-        logging.info("Visualizing 10 random polymer graphs...")
-        sample_graphs = random.sample(graphs, min(10, len(graphs)))
-        mols = []
-        for g in sample_graphs:
-            if hasattr(g, "smiles"):
-                monomer_smiles = g.smiles.split('|')[0]  # strip ratios/connectivity
-                mol = Chem.MolFromSmiles(monomer_smiles)
-                if mol:
-                    mols.append(mol)
-        if mols:
-            img = Draw.MolsToGridImage(mols, molsPerRow=5, subImgSize=(300, 300),
-                                       legends=[f"Mol {i}" for i in range(len(mols))])
-            display(img)
-        else:
-            logging.warning("No valid molecules for visualization.")
+        print("❌ No valid polymer structures found in poly_chemprop_input")
   
     if len(graphs) == 0:
         logging.error("No valid polymer graphs could be constructed. Exiting.")
