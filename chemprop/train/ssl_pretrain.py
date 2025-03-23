@@ -75,7 +75,7 @@ class SSLPretrainModel(nn.Module):
             bond_to_mol.extend([mol_idx] * length)
         bond_to_mol = torch.tensor(bond_to_mol, device=atom_hiddens.device)
         
-        for e in range(E):
+        for e in range(len(batch_graph.f_bonds)):
             rev_e = batch_graph.b2revb[e].item()
             if rev_e in visited:
                 continue
@@ -87,8 +87,8 @@ class SSLPretrainModel(nn.Module):
             a1_local = batch_graph.b2a[e].item()
             a2_local = batch_graph.b2a[rev_e].item()
         
-            a1_start, _ = batch_graph.a_scope[mol_idx]
-            a2_start, _ = batch_graph.a_scope[mol_idx]
+            a1_start, a1_len = batch_graph.a_scope[mol_idx]
+            a2_start, a2_len = batch_graph.a_scope[mol_idx]
         
             a1_idx = a1_start + a1_local
             a2_idx = a2_start + a2_local
