@@ -458,14 +458,5 @@ torch.save(model.encoder.state_dict(), encoder_model_path)
 logger.info(f"Saved full SSL model to {full_model_path}")
 logger.info(f"Saved encoder (wD-MPNN) state dict to {encoder_model_path}")
 
-# Example usage
-# !python ssl_pretrain.py \
-#   --data_path /content/drive/MyDrive/AI_MSE_Company/poly_chemprop_input_with_Xn.csv \
-#   --polymer \
-#   --save_dir /content/drive/MyDrive/AI_MSE_Company/ssl_chemprop_checkpoints \
-#   --pretrain_frac 0.4 \
-#   --epochs 30 \
-#   --batch_size 32 \
-#   --num_workers 2 \
-#   --save_smiles_splits
+
 
