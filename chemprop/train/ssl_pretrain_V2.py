@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+
 # ssl_pretrain_V2.py
 """
 Self-supervised pretraining script for polymer-chemprop.
