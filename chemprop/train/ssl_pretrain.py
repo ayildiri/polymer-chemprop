@@ -66,9 +66,25 @@ class SSLPretrainModel(nn.Module):
         node_pred = self.node_head(atom_hiddens)  # shape (total_atoms, atom_feat_size)
         # Predict bond features: for each bond, combine the two endpoint atom embeddings.
         # We average the embeddings of the two atoms connected by each bond.
-        E = batch_graph.edge_index.shape[1]  # number of directed edges in batch
-        # The first half of edge_index columns (0...E-1) correspond to directed edges.
-        # Pair each directed edge with its reverse (stored in BatchMolGraph.rev_edge_index).
+        E = len(batch_graph.f_bonds)  # ✅ Total directed bonds
+        bond_preds: List[torch.Tensor] = []
+        visited = set()
+        
+        for e in range(E):
+            rev_e = batch_graph.b2revb[e].item()
+            if rev_e in visited:
+                continue  # skip the reverse if already processed
+            visited.add(e)
+            visited.add(rev_e)
+        
+            a1_idx = batch_graph.b2a[e]
+            a2_idx = batch_graph.b2a[rev_e]
+        
+            h1 = atom_hiddens[a1_idx]
+            h2 = atom_hiddens[a2_idx]
+            bond_emb = 0.5 * (h1 + h2)
+            bond_preds.append(self.edge_head(bond_emb))
+
         rev_indices = batch_graph.rev_edge_index  # mapping from edge index to reverse edge index
         bond_preds: List[torch.Tensor] = []
         visited = set()
