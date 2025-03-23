@@ -333,9 +333,11 @@ def main():
             for (mol_idx, atom_idx), orig_feat in zip(pred_node_indices, original_node_feats):
                 # Find the global index of this atom in the batched graph
                 # BatchMolGraph stores a mapping of molecule index to atom indices range
-                global_atom_index = batch_graph.a_scope[mol_idx][0] + atom_idx
-                orig = torch.tensor(orig_feat, dtype=torch.float32, device=node_preds.device)
-                pred = node_preds[global_atom_index]
+                for global_atom_index in graph.node_masked_indices:
+                    if global_atom_index >= node_preds.size(0):
+                        print(f"⚠️  Skipping node index {global_atom_index} (max={node_preds.size(0)})")
+                        continue
+                    pred = node_preds[global_atom_index]
                 node_loss += torch.mean((pred - orig)**2)  # MSE for that node (averaged over feature components)
             if len(pred_node_indices) > 0:
                 node_loss = node_loss / len(pred_node_indices)  # average over masked nodes
