@@ -87,26 +87,44 @@ class SSLPretrainModel(nn.Module):
         graph_pred = self.graph_head(graph_embeddings)  # shape (batch_size, 1)
         return node_pred, edge_pred, graph_pred
 
-def compute_ensemble_weight(polymer_smiles: str):
-    """Compute ensemble molecular weight from a polymer SMILES with monomer ratio using RDKit."""
-    # Parse polymer SMILES format: "Monomer1.SMILES.Monomer2.SMILES|w1|w2|..."
-    parts = polymer_smiles.split('|')
-    monomer_smiles_part = parts[0]  # e.g. "C=C.CCC" (monomerA.SMILES + '.' + monomerB.SMILES)
-    monomer_weights = [float(x) for x in parts[1:-1]]  # all parts except first (SMILES) and last (maybe architecture)
-    # Split the monomer SMILES on the dot to get each monomer
-    monomers = monomer_smiles_part.split('.')
-    # Compute molecular weight for each monomer using RDKit
-    mol1 = Chem.MolFromSmiles(monomers[0])
-    mol2 = Chem.MolFromSmiles(monomers[1]) if len(monomers) > 1 else None
-    mw1 = Descriptors.ExactMolWt(mol1) if mol1 is not None else 0.0
-    mw2 = Descriptors.ExactMolWt(mol2) if mol2 is not None else 0.0
-    # Weighted sum (ensemble weight)
-    if mol2 is not None:
-        M_ensemble = monomer_weights[0] * mw1 + monomer_weights[1] * mw2
-    else:
-        # In case of a single monomer (homopolymer), just use its weight (monomer_weights[0] likely 1.0)
-        M_ensemble = mw1
-    return M_ensemble
+def safe_float(x):
+    try:
+        return float(x)
+    except ValueError:
+        return None
+
+def compute_ensemble_weight(poly_input: str):
+    try:
+        parts = poly_input.split('|')
+        monomer_smiles = parts[0].split('.')
+        monomer_weights = parts[1:-1]
+
+        if len(monomer_smiles) < 2 or len(monomer_weights) < 2:
+            print(f"[Warning] Incomplete polymer entry: {poly_input}")
+            return 0.0
+
+        w1 = safe_float(monomer_weights[0])
+        w2 = safe_float(monomer_weights[1])
+        if w1 is None or w2 is None:
+            print(f"[Warning] Non-numeric weights in: {poly_input}")
+            return 0.0
+
+        mol1 = Chem.MolFromSmiles(monomer_smiles[0])
+        mol2 = Chem.MolFromSmiles(monomer_smiles[1])
+
+        if mol1 is None or mol2 is None:
+            print(f"[Warning] Invalid monomer SMILES in: {poly_input}")
+            return 0.0
+
+        mw1 = Descriptors.ExactMolWt(mol1)
+        mw2 = Descriptors.ExactMolWt(mol2)
+
+        M_ensemble = w1 * mw1 + w2 * mw2
+        return M_ensemble
+
+    except Exception as e:
+        print(f"[Error] Failed to compute ensemble weight for: {poly_input} — {e}")
+        return 0.0
 
 def load_polymer_data(path: str, polymer_mode: bool) -> List[str]:
     """Load polymer SMILES data from a file (CSV or TXT). Returns list of polymer strings."""
