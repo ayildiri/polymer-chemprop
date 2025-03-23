@@ -386,9 +386,9 @@ def main():
     logging.info(f"Built graph structures for {len(graphs)} polymers.")
 
     try:
-    from rdkit.Chem import Draw
-    from rdkit import Chem
-    import matplotlib.pyplot as plt
+        from rdkit.Chem import Draw
+        from rdkit import Chem
+        import matplotlib.pyplot as plt
     except ImportError:
         logging.warning("RDKit or matplotlib not available; skipping graph visualization.")
     else:
