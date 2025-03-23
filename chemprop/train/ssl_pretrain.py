@@ -327,36 +327,35 @@ def main():
             move_batch_to_device(batch_graph, model.encoder.device)
             # Forward pass
             
+           
             node_preds, edge_preds, graph_preds = model(batch_graph)
             
             # Compute losses
             node_loss = 0.0; edge_loss = 0.0; graph_loss = 0.0
             
             # Node loss
-            for i, graph in enumerate(batch_graph.mol_graphs):
-                for global_atom_index, orig_feat in zip(graph.node_masked_indices, graph.original_node_features):
-                    if global_atom_index >= node_preds.size(0):
-                        print(f"⚠️  Skipping node index {global_atom_index} (max={node_preds.size(0)})")
+            if hasattr(batch_graph, "node_masked_indices") and hasattr(batch_graph, "original_node_features"):
+                for idx, orig_feat in zip(batch_graph.node_masked_indices, batch_graph.original_node_features):
+                    if idx >= node_preds.size(0):
+                        print(f"⚠️  Skipping node index {idx} (max={node_preds.size(0)})")
                         continue
-                    pred = node_preds[global_atom_index]
+                    pred = node_preds[idx]
                     orig = torch.tensor(orig_feat, dtype=torch.float32, device=pred.device)
                     node_loss += torch.mean((pred - orig) ** 2)
-            
-            if node_preds.size(0) > 0:
-                node_loss = node_loss / len(pred_node_indices)
+                if len(batch_graph.node_masked_indices) > 0:
+                    node_loss = node_loss / len(batch_graph.node_masked_indices)
             
             # Edge loss
-            for i, graph in enumerate(batch_graph.mol_graphs):
-                for global_bond_index, orig_feat in zip(graph.edge_masked_indices, graph.original_edge_features):
-                    if global_bond_index >= edge_preds.size(0):
-                        print(f"⚠️  Skipping edge index {global_bond_index} (max={edge_preds.size(0)})")
+            if hasattr(batch_graph, "edge_masked_indices") and hasattr(batch_graph, "original_edge_features"):
+                for idx, orig_feat in zip(batch_graph.edge_masked_indices, batch_graph.original_edge_features):
+                    if idx >= edge_preds.size(0):
+                        print(f"⚠️  Skipping edge index {idx} (max={edge_preds.size(0)})")
                         continue
-                    pred = edge_preds[global_bond_index]
+                    pred = edge_preds[idx]
                     orig = torch.tensor(orig_feat, dtype=torch.float32, device=pred.device)
                     edge_loss += torch.mean((pred - orig) ** 2)
-            
-            if edge_preds.size(0) > 0:
-                edge_loss = edge_loss / len(original_edge_feats)
+                if len(batch_graph.edge_masked_indices) > 0:
+                    edge_loss = edge_loss / len(batch_graph.edge_masked_indices)
             
             # Graph loss
             target_tensor = torch.tensor(graph_targets, dtype=torch.float32, device=graph_preds.device).unsqueeze(1)
