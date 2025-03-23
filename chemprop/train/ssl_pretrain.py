@@ -47,7 +47,24 @@ class SSLPretrainModel(nn.Module):
             nn.Linear(hidden_size, 1)
         )
 
+    def get_rev_edge_index(self, edge_index):
+        rev_edge_index = {}
+        src, dst = edge_index
+        for i, (u, v) in enumerate(zip(src.tolist(), dst.tolist())):
+            for j, (v2, u2) in enumerate(zip(src.tolist(), dst.tolist())):
+                if u == u2 and v == v2:
+                    continue
+                if u == v2 and v == u2:
+                    rev_edge_index[i] = j
+                    break
+        return rev_edge_index
+
+
     def forward(self, batch_graph: BatchMolGraph):
+        if not hasattr(batch_graph, 'rev_edge_index'):
+        batch_graph.rev_edge_index = self.get_rev_edge_index(batch_graph.edge_index)
+
+        rev_indices = batch_graph.rev_edge_index
         # Perform message passing to get final atom embeddings.
         # Chemprop's MessagePassing returns a molecule-level embedding by default, 
         # so we use internal methods to get atom-level embeddings.
@@ -124,6 +141,9 @@ class SSLPretrainModel(nn.Module):
         # Predict graph-level property (ensemble molecular weight) for each molecule
         graph_pred = self.graph_head(graph_embeddings)  # shape (batch_size, 1)
         return node_pred, edge_pred, graph_pred
+
+        
+
 
 def safe_float(x):
     try:
