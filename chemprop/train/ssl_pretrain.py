@@ -326,32 +326,42 @@ def main():
             batch_graph = BatchMolGraph(mol_graphs)
             move_batch_to_device(batch_graph, model.encoder.device)
             # Forward pass
+            
             node_preds, edge_preds, graph_preds = model(batch_graph)
+            
             # Compute losses
             node_loss = 0.0; edge_loss = 0.0; graph_loss = 0.0
-            # Node loss: gather predictions for masked nodes and compare to originals
-            for (mol_idx, atom_idx), orig_feat in zip(pred_node_indices, original_node_feats):
-                # Find the global index of this atom in the batched graph
-                # BatchMolGraph stores a mapping of molecule index to atom indices range
-                for global_atom_index in graph.node_masked_indices:
+            
+            # Node loss
+            for i, graph in enumerate(batch_graph.mol_graphs):
+                for global_atom_index, orig_feat in zip(graph.node_masked_indices, graph.original_node_features):
                     if global_atom_index >= node_preds.size(0):
                         print(f"⚠️  Skipping node index {global_atom_index} (max={node_preds.size(0)})")
                         continue
                     pred = node_preds[global_atom_index]
-                node_loss += torch.mean((pred - orig)**2)  # MSE for that node (averaged over feature components)
-            if len(pred_node_indices) > 0:
-                node_loss = node_loss / len(pred_node_indices)  # average over masked nodes
-            # Edge loss: predictions for masked bonds vs original
-            # `edge_preds` list corresponds to each masked bond (undirected) in the batch in the order we appended.
-            for pred_idx, orig_feat in enumerate(original_edge_feats):
-                orig = torch.tensor(orig_feat, dtype=torch.float32, device=edge_preds.device)
-                pred = edge_preds[pred_idx]
-                edge_loss += torch.mean((pred - orig)**2)
-            if len(original_edge_feats) > 0:
+                    orig = torch.tensor(orig_feat, dtype=torch.float32, device=pred.device)
+                    node_loss += torch.mean((pred - orig) ** 2)
+            
+            if node_preds.size(0) > 0:
+                node_loss = node_loss / len(pred_node_indices)
+            
+            # Edge loss
+            for i, graph in enumerate(batch_graph.mol_graphs):
+                for global_bond_index, orig_feat in zip(graph.edge_masked_indices, graph.original_edge_features):
+                    if global_bond_index >= edge_preds.size(0):
+                        print(f"⚠️  Skipping edge index {global_bond_index} (max={edge_preds.size(0)})")
+                        continue
+                    pred = edge_preds[global_bond_index]
+                    orig = torch.tensor(orig_feat, dtype=torch.float32, device=pred.device)
+                    edge_loss += torch.mean((pred - orig) ** 2)
+            
+            if edge_preds.size(0) > 0:
                 edge_loss = edge_loss / len(original_edge_feats)
-            # Graph loss: MSE between predicted and target molecular weight for each molecule
+            
+            # Graph loss
             target_tensor = torch.tensor(graph_targets, dtype=torch.float32, device=graph_preds.device).unsqueeze(1)
-            graph_loss = torch.mean((graph_preds - target_tensor)**2)
+            graph_loss = torch.mean((graph_preds - target_tensor) ** 2)
+
             # Combine losses
             total_loss = node_loss + edge_loss + graph_loss
             # Backpropagate and optimize
