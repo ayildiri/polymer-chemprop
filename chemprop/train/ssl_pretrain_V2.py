@@ -411,10 +411,7 @@ def main():
         display(img)  # 👈 This shows the image inline (works in Jupyter/Colab)
     else:
         print("❌ No valid polymer molecules to visualize.")
-        
-    except Exception as e:
-        logging.warning(f"Visualization skipped: {str(e)}")
-
+  
     for g in sample_graphs:
         try:
             # Get SMILES (handle fallback in case .smiles is not set)
