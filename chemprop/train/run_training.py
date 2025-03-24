@@ -213,9 +213,46 @@ def run_training(args: TrainArgs,
         if args.checkpoint_paths is not None:
             debug(f'Loading model {model_idx} from {args.checkpoint_paths[model_idx]}')
             model = load_checkpoint(args.checkpoint_paths[model_idx], logger=logger)
-        else:
-            debug(f'Building model {model_idx}')
-            model = MoleculeModel(args)
+
+        # Load SSL-pretrained state_dict
+        ssl_state_dict = torch.load(args.checkpoint_frzn, map_location='cpu')
+    
+        if 'state_dict' in ssl_state_dict:
+            ssl_state_dict = ssl_state_dict['state_dict']  # Ensure correct format
+    
+        # Transfer message-passing layers
+        model.encoder.encoder.W_initial.load_state_dict({
+            'weight': ssl_state_dict['W_initial.weight'],
+            'bias': ssl_state_dict['W_initial.bias']
+        })
+        model.encoder.encoder.W_message.load_state_dict({
+            'weight': ssl_state_dict['W_message.weight'],
+            'bias': ssl_state_dict['W_message.bias']
+        })
+    
+        # Transfer fully connected layers (FFN)
+        model.ffn[0].load_state_dict({
+            'weight': ssl_state_dict['graph_head.0.weight'],
+            'bias': ssl_state_dict['graph_head.0.bias']
+        })
+        model.ffn[2].load_state_dict({
+            'weight': ssl_state_dict['graph_head.2.weight'],
+            'bias': ssl_state_dict['graph_head.2.bias']
+        })
+    
+        # Freeze the encoder if specified
+        if args.freeze_encoder:
+            for param in model.encoder.parameters():
+                param.requires_grad = False
+            debug("✅ Encoder frozen (message-passing layers).")
+    
+        # Freeze FFN layers if specified
+        if args.frzn_ffn_layers > 0:
+            for i in range(args.frzn_ffn_layers):
+                for param in model.ffn[i * 2].parameters():  # Only freeze Linear layers (not activations)
+                    param.requires_grad = False
+            debug(f"✅ First {args.frzn_ffn_layers} FFN layers frozen.")
+
             
         # Optionally, overwrite weights:
         if args.checkpoint_frzn is not None:
