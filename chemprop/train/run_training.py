@@ -210,41 +210,41 @@ def run_training(args: TrainArgs,
             writer = SummaryWriter(logdir=save_dir)
 
         # Load/build model
-        if args.checkpoint_paths is not None:
-            debug(f'Loading model {model_idx} from {args.checkpoint_paths[model_idx]}')
-            model = load_checkpoint(args.checkpoint_paths[model_idx], logger=logger)
-
-        # Load SSL-pretrained state_dict
-        ssl_state_dict = torch.load(args.checkpoint_frzn, map_location='cpu')
+        if args.checkpoint_frzn is not None:
+            debug(f'Loading and freezing parameters from {args.checkpoint_frzn}.')
+            
+            # Instantiate the model FIRST
+            model = MoleculeModel(args)
+        
+            # Then load the checkpoint and transfer encoder + FFN weights
+            ssl_state_dict = torch.load(args.checkpoint_frzn, map_location='cpu')
+        
+            # Transfer encoder
+            model.encoder.encoder.W_initial.load_state_dict({
+                'weight': ssl_state_dict['W_initial.weight'],
+                'bias': ssl_state_dict['W_initial.bias']
+            })
+            model.encoder.encoder.W_message.load_state_dict({
+                'weight': ssl_state_dict['W_message.weight'],
+                'bias': ssl_state_dict['W_message.bias']
+            })
+        
+            # Optionally transfer FFN layers based on args.frzn_ffn_layers
+            if args.frzn_ffn_layers > 0:
+                ffn_state_dict = model.ffn.state_dict()
+                for i in range(args.frzn_ffn_layers):
+                    ffn_state_dict[f'{2*i}.weight'] = ssl_state_dict[f'graph_head.{2*i}.weight']
+                    ffn_state_dict[f'{2*i}.bias']   = ssl_state_dict[f'graph_head.{2*i}.bias']
+                model.ffn.load_state_dict(ffn_state_dict)
+        
+            # Freeze specified layers
+            for name, param in model.named_parameters():
+                if 'W_initial' in name or 'W_message' in name or 'ffn' in name:
+                    param.requires_grad = False
     
-        if 'state_dict' in ssl_state_dict:
-            ssl_state_dict = ssl_state_dict['state_dict']  # Ensure correct format
-    
-        # Transfer message-passing layers
-        model.encoder.encoder.W_initial.load_state_dict({
-            'weight': ssl_state_dict['W_initial.weight'],
-            'bias': ssl_state_dict['W_initial.bias']
-        })
-        model.encoder.encoder.W_message.load_state_dict({
-            'weight': ssl_state_dict['W_message.weight'],
-            'bias': ssl_state_dict['W_message.bias']
-        })
-    
-        # Transfer fully connected layers (FFN)
-        model.ffn[0].load_state_dict({
-            'weight': ssl_state_dict['graph_head.0.weight'],
-            'bias': ssl_state_dict['graph_head.0.bias']
-        })
-        model.ffn[2].load_state_dict({
-            'weight': ssl_state_dict['graph_head.2.weight'],
-            'bias': ssl_state_dict['graph_head.2.bias']
-        })
-    
-        # Freeze the encoder if specified
-        if args.freeze_encoder:
-            for param in model.encoder.parameters():
-                param.requires_grad = False
-            debug("✅ Encoder frozen (message-passing layers).")
+        else:
+            debug(f'Building model {model_idx}')
+            model = MoleculeModel(args)
     
         # Freeze FFN layers if specified
         if args.frzn_ffn_layers > 0:
