@@ -339,7 +339,7 @@ def main():
     args = parser.parse_args()
 
     if args.polymer:
-    set_polymer(True)
+        set_polymer(True)
 
     if args.seed is not None:
         random.seed(args.seed)
