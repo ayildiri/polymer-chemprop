@@ -12,17 +12,18 @@ import random
 import argparse
 import numpy as np
 import pandas as pd
-
 try:
     from rdkit import Chem
     from rdkit.Chem import rdchem
-    from rdkit.Chem import Draw
 except ImportError:
     Chem = None
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
+from chemprop.features.featurization import atom_features, set_polymer
+
+
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -41,29 +42,7 @@ def one_hot_encoding(value, choices):
     return encoding
 
 def get_atom_features(atom):
-    """Compute atom feature vector (based on Chemprop defaults) for a given RDKit atom."""
-    # Atomic number one-hot (allow up to 100)
-    atom_num = atom.GetAtomicNum()
-    atom_num_feature = one_hot_encoding(atom_num, list(range(1, 101)))
-    # Degree one-hot (degree of atom in graph, up to 5)
-    degree_feature = one_hot_encoding(atom.GetTotalDegree(), list(range(6)))
-    # Formal charge one-hot (allow -3 to +3)
-    formal_charge_feature = one_hot_encoding(atom.GetFormalCharge(), [-3, -2, -1, 0, 1, 2, 3])
-    # Chirality one-hot
-    chiral_tag = int(atom.GetChiralTag())
-    chiral_feature = one_hot_encoding(chiral_tag, [0, 1, 2, 3])
-    # Number of Hs one-hot (explicit + implicit total Hs)
-    num_H = int(atom.GetTotalNumHs())
-    num_H_feature = one_hot_encoding(num_H, list(range(5)))
-    # Hybridization one-hot
-    hybrid = int(atom.GetHybridization())
-    hybrid_feature = one_hot_encoding(hybrid, [0, 1, 2, 3, 4, 5])
-    # Aromaticity
-    aromatic_feature = [1 if atom.GetIsAromatic() else 0]
-    # Atomic mass (scaled)
-    mass_feature = [atom.GetMass() * 0.01]
-    features = atom_num_feature + degree_feature + formal_charge_feature + chiral_feature + num_H_feature + hybrid_feature + aromatic_feature + mass_feature
-    return features
+    return atom_features(atom)
 
 def get_bond_features(bond):
     """Compute bond feature vector for an RDKit bond (Chemprop style)."""
@@ -336,14 +315,13 @@ def build_polymer_graph(smiles):
             graph.n_edges += 1
             graph.b2rev[e_index] = rev_index
             graph.b2rev[rev_index] = e_index
-    
-    graph.smiles = smiles
     return graph
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_path', type=str, required=True, help='Path to CSV file with poly_chemprop_input column.')
     parser.add_argument('--save_dir', type=str, required=True, help='Directory to save the pretrained model.')
+    parser.add_argument('--polymer', action='store_true', help='Use polymer-specific atom featurization.')
     parser.add_argument('--pretrain_frac', type=float, default=1.0, help='Fraction of dataset to use for pretraining.')
     parser.add_argument('--val_frac', type=float, default=0.1, help='Fraction of data to use for validation.')
     parser.add_argument('--epochs', type=int, default=10, help='Number of training epochs.')
@@ -359,6 +337,9 @@ def main():
     parser.add_argument('--atom_descriptors_path', type=str, default=None, help='Path to atom descriptors (not used).')
     parser.add_argument('--bond_features_path', type=str, default=None, help='Path to bond features (not used).')
     args = parser.parse_args()
+
+    if args.polymer:
+    set_polymer(True)
 
     if args.seed is not None:
         random.seed(args.seed)
@@ -389,35 +370,6 @@ def main():
     if len(graphs) == 0:
         logging.error("No valid polymer graphs could be constructed. Exiting.")
         return
-    
-    # Optional: Visualize 10 random polymer graphs 
-    
-        
-    logging.info("Visualizing 10 random polymer graphs...")
-    from rdkit import Chem
-    from rdkit.Chem import Draw
-    from IPython.display import display  # 👈 Required to show image inline
-
-    # Choose 10 random graphs
-    sample_graphs = random.sample(graphs, min(10, len(graphs)))
-    
-    # Convert their original SMILES strings back to RDKit mols
-    mol_list = []
-    for g in sample_graphs:
-        try:
-            mol = Chem.MolFromSmiles(g.smiles.split("|")[0])  # fallback if '|' is present
-            if mol:
-                mol_list.append(mol)
-        except:
-            continue
-
-    # Display the molecules as a grid image
-    if mol_list:
-        img = Draw.MolsToGridImage(mol_list, molsPerRow=5, subImgSize=(300, 300))
-        display(img)
-    else:
-        print("❌ No valid polymer structures to visualize.")
-    
     random.shuffle(graphs)
     val_count = int(len(graphs) * args.val_frac)
     val_graphs = graphs[:val_count]
