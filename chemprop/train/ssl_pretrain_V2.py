@@ -21,7 +21,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
-from chemprop.features.featurization import atom_features, set_polymer
+from chemprop.features.featurization import atom_features, bond_features, set_polymer
 
 
 
@@ -45,24 +45,8 @@ def get_atom_features(atom):
     return atom_features(atom)
 
 def get_bond_features(bond):
-    """Compute bond feature vector for an RDKit bond (Chemprop style)."""
-    bt = bond.GetBondType()
-    bond_type_features = [
-        bt == rdchem.BondType.SINGLE,
-        bt == rdchem.BondType.DOUBLE,
-        bt == rdchem.BondType.TRIPLE,
-        bt == rdchem.BondType.AROMATIC
-    ]
-    conjugated = bond.GetIsConjugated() if bt is not None else False
-    in_ring = bond.IsInRing() if bt is not None else False
-    conj_ring_features = [1 if conjugated else 0, 1 if in_ring else 0]
-    stereo = int(bond.GetStereo())
-    stereo_feature = [0]*6
-    if 0 <= stereo < 6:
-        stereo_feature[stereo] = 1
-    features = bond_type_features + conj_ring_features + stereo_feature
-    features = [1 if x else 0 for x in features]
-    return features
+    return bond_features(bond)
+
 
 class PolymerGraph:
     """Data structure for a polymer graph with precomputed features."""
