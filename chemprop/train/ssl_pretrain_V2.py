@@ -280,11 +280,10 @@ def build_polymer_graph(smiles):
             weight_factor = 1.0 + math.log(Xn)
         except ValueError:
             weight_factor = 1.0
-    for (i, j, w1, w2) in edges_info:
-        if i in dummy_index_map and j in dummy_index_map:
-            u = dummy_index_map[i]
-            v = dummy_index_map[j]
-            bf = [1,0,0,0, 0,0] + [1,0,0,0,0,0]  # 12-length feature vector for polymer bond
+    
+            fake_bond = Chem.Bond()  # create a dummy bond to pass into bond_features
+            bf = bond_features(fake_bond)
+
             e_index = graph.n_edges
             graph.edge_index.append((u, v))
             graph.edge_features.append(bf)
