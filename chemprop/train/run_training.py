@@ -213,34 +213,36 @@ def run_training(args: TrainArgs,
         if args.checkpoint_frzn is not None:
             debug(f'Loading and freezing parameters from {args.checkpoint_frzn}.')
             
-            # Instantiate the model FIRST
-            model = MoleculeModel(args)
-        
-            # Then load the checkpoint and transfer encoder + FFN weights
+            # Load SSL checkpoint state_dict
             ssl_state_dict = torch.load(args.checkpoint_frzn, map_location='cpu')
         
-            # Transfer encoder
-            model.encoder.encoder.W_initial.load_state_dict({
+            # Transfer to encoder
+            encoder_layers = model.encoder.encoder  # This is a ModuleList of MPNLayer
+            encoder_layers[0].W_i.load_state_dict({
                 'weight': ssl_state_dict['W_initial.weight'],
                 'bias': ssl_state_dict['W_initial.bias']
             })
-            model.encoder.encoder.W_message.load_state_dict({
+            encoder_layers[0].W_h.load_state_dict({
                 'weight': ssl_state_dict['W_message.weight'],
                 'bias': ssl_state_dict['W_message.bias']
             })
         
-            # Optionally transfer FFN layers based on args.frzn_ffn_layers
+            # Freeze encoder weights
+            for param in encoder_layers[0].W_i.parameters():
+                param.requires_grad = False
+            for param in encoder_layers[0].W_h.parameters():
+                param.requires_grad = False
+        
+            # Optionally transfer and freeze FFN layers
             if args.frzn_ffn_layers > 0:
+                debug(f'Transferring and freezing first {args.frzn_ffn_layers} FFN layers from SSL model.')
                 ffn_state_dict = model.ffn.state_dict()
                 for i in range(args.frzn_ffn_layers):
                     ffn_state_dict[f'{2*i}.weight'] = ssl_state_dict[f'graph_head.{2*i}.weight']
-                    ffn_state_dict[f'{2*i}.bias']   = ssl_state_dict[f'graph_head.{2*i}.bias']
+                    ffn_state_dict[f'{2*i}.bias'] = ssl_state_dict[f'graph_head.{2*i}.bias']
+                    model.ffn[2*i].weight.requires_grad = False
+                    model.ffn[2*i].bias.requires_grad = False
                 model.ffn.load_state_dict(ffn_state_dict)
-        
-            # Freeze specified layers
-            for name, param in model.named_parameters():
-                if 'W_initial' in name or 'W_message' in name or 'ffn' in name:
-                    param.requires_grad = False
     
         else:
             debug(f'Building model {model_idx}')
