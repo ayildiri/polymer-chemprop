@@ -128,7 +128,7 @@ class SSLPretrainModel(nn.Module):
         self.hidden_size = hidden_size
         self.depth = depth
         # Initial message transformation (atom + bond -> hidden)
-        self.W_initial = nn.Linear(atom_feat_dim + bond_feat_dim, hidden_size)
+        self.W_initial = nn.Linear(atom_feat_dim + bond_feat_dim, hidden_size, bias=False)
         # Message passing update transformation (hidden -> hidden)
         self.W_message = nn.Linear(hidden_size, hidden_size)
         # Prediction heads
