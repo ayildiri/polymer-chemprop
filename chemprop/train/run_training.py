@@ -208,13 +208,11 @@ def run_training(args: TrainArgs,
             writer = SummaryWriter(log_dir=save_dir)
         except:
             writer = SummaryWriter(logdir=save_dir)
-
+            
+        model = MoleculeModel(args)
         # Load/build model
         if args.checkpoint_frzn is not None:
             debug(f'Loading and freezing parameters from {args.checkpoint_frzn}.')
-
-            # Step 1: Instantiate the model first
-            model = MoleculeModel(args)
             
             # Load SSL checkpoint state_dict
             ssl_state_dict = torch.load(args.checkpoint_frzn, map_location='cpu')
