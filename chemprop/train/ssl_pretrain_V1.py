@@ -340,6 +340,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_path', type=str, required=True, help='Path to CSV file with poly_chemprop_input column.')
     parser.add_argument('--save_dir', type=str, required=True, help='Directory to save the pretrained model.')
+    parser.add_argument('--polymer', action='store_true', help='Use polymer-specific atom featurization.')
     parser.add_argument('--pretrain_frac', type=float, default=1.0, help='Fraction of dataset to use for pretraining.')
     parser.add_argument('--val_frac', type=float, default=0.1, help='Fraction of data to use for validation.')
     parser.add_argument('--epochs', type=int, default=10, help='Number of training epochs.')
