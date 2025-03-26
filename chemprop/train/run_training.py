@@ -213,18 +213,26 @@ def run_training(args: TrainArgs,
         # Load/build model
         if args.checkpoint_frzn is not None:
             debug(f'Loading and freezing parameters from {args.checkpoint_frzn}.')
+            ssl_checkpoint = torch.load(args.checkpoint_frzn, map_location='cpu')
             
-            # Load SSL checkpoint state_dict
-            ssl_state_dict = torch.load(args.checkpoint_frzn, map_location='cpu')
-        
-            # Transfer to encoder
-            encoder_layers = model.encoder.encoder  # This is a ModuleList of MPNLayer
+            # Safely unpack state_dict
+            ssl_state_dict = ssl_checkpoint['state_dict']
+            
+            # Load encoder layers
+            encoder_layers = model.encoder.encoder
             encoder_layers[0].W_i.load_state_dict({
-                ssl_state_dict = torch.load(args.checkpoint_frzn)['state_dict']  
+                'weight': ssl_state_dict['W_initial.weight']
             })
             encoder_layers[0].W_h.load_state_dict({
                 'weight': ssl_state_dict['W_message.weight']
             })
+            
+            # Freeze encoder weights
+            for param in encoder_layers[0].W_i.parameters():
+                param.requires_grad = False
+            for param in encoder_layers[0].W_h.parameters():
+                param.requires_grad = False
+
         
             # Freeze encoder weights
             for param in encoder_layers[0].W_i.parameters():
@@ -258,7 +266,7 @@ def run_training(args: TrainArgs,
         # Optionally, overwrite weights:
         if args.checkpoint_frzn is not None:
             debug(f'Loading and freezing parameters from {args.checkpoint_frzn}.')
-            model = load_frzn_model(model=model,path=args.checkpoint_frzn, current_args=args, logger=logger)     
+                
         
         debug(model)
         
