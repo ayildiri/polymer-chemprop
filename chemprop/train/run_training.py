@@ -220,7 +220,7 @@ def run_training(args: TrainArgs,
             # Transfer to encoder
             encoder_layers = model.encoder.encoder  # This is a ModuleList of MPNLayer
             encoder_layers[0].W_i.load_state_dict({
-                'weight': ssl_state_dict['W_initial.weight']
+                ssl_state_dict = torch.load(args.checkpoint_frzn)['state_dict']  
             })
             encoder_layers[0].W_h.load_state_dict({
                 'weight': ssl_state_dict['W_message.weight']
