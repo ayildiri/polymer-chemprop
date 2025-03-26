@@ -368,6 +368,8 @@ def main():
     model = SSLPretrainModel(atom_feat_dim, bond_feat_dim, args.hidden_size, args.depth, args.dropout)
     device = torch.device('cuda' if (torch.cuda.is_available() and not args.no_cuda) else 'cpu')
     model.to(device)
+    total_params = sum(p.numel() for p in model.parameters())
+    logging.info(f"🧠 Model has {total_params:,} parameters.")
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=3, factor=0.5, verbose=True)
     best_val_loss = float('inf')
