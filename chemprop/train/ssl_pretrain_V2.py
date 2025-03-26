@@ -481,13 +481,16 @@ def main():
         logging.info(f"Epoch {epoch}/{args.epochs} | Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f}")
         if avg_val_loss < best_val_loss:
             best_val_loss = avg_val_loss
+    
+if avg_val_loss < best_val_loss:
+    best_val_loss = avg_val_loss
     os.makedirs(args.save_dir, exist_ok=True)
     save_path = os.path.join(args.save_dir, "model.pt")
     torch.save({
         'state_dict': model.state_dict(),
-        'args': vars(args)  # optional but nice to have
+        'args': vars(args)
     }, save_path)
-    logging.info(f"Saved trained model to {save_path}")
+    logging.info(f"✅ Saved best model to {save_path} (val loss = {avg_val_loss:.4f})")
 
 if __name__ == "__main__":
     if Chem is None:
