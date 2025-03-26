@@ -299,8 +299,7 @@ def build_polymer_graph(smiles):
     return graph
 
 def main():
-    early_stop_patience = 5
-    epochs_no_improve = 0
+    
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_path', type=str, required=True, help='Path to CSV file with poly_chemprop_input column.')
     parser.add_argument('--save_dir', type=str, required=True, help='Directory to save the pretrained model.')
@@ -321,6 +320,8 @@ def main():
     parser.add_argument('--atom_descriptors_path', type=str, default=None, help='Path to atom descriptors (not used).')
     parser.add_argument('--bond_features_path', type=str, default=None, help='Path to bond features (not used).')
     args = parser.parse_args()
+
+    epochs_no_improve = 0
 
     if args.polymer:
         set_polymer(True)
@@ -371,7 +372,7 @@ def main():
     total_params = sum(p.numel() for p in model.parameters())
     logging.info(f"🧠 Model has {total_params:,} parameters.")
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=3, factor=0.5, verbose=True)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=10, factor=0.5, verbose=True)
     best_val_loss = float('inf')
     best_epoch = -1
     epochs_no_improve = 0
