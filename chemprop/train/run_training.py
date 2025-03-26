@@ -232,13 +232,6 @@ def run_training(args: TrainArgs,
                 param.requires_grad = False
             for param in encoder_layers[0].W_h.parameters():
                 param.requires_grad = False
-
-        
-            # Freeze encoder weights
-            for param in encoder_layers[0].W_i.parameters():
-                param.requires_grad = False
-            for param in encoder_layers[0].W_h.parameters():
-                param.requires_grad = False
         
             # Optionally transfer and freeze FFN layers
             if args.frzn_ffn_layers > 0:
