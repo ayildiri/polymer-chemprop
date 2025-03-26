@@ -372,7 +372,7 @@ def main():
     total_params = sum(p.numel() for p in model.parameters())
     logging.info(f"🧠 Model has {total_params:,} parameters.")
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=10, factor=0.5, verbose=True)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=args.patience, factor=0.5, verbose=True)
     best_val_loss = float('inf')
     best_epoch = -1
     epochs_no_improve = 0
