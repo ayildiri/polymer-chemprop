@@ -483,7 +483,10 @@ def main():
             best_val_loss = avg_val_loss
     os.makedirs(args.save_dir, exist_ok=True)
     save_path = os.path.join(args.save_dir, "model.pt")
-    torch.save(model.state_dict(), save_path)
+    torch.save({
+        'state_dict': model.state_dict(),
+        'args': vars(args)  # optional but nice to have
+    }, save_path)
     logging.info(f"Saved trained model to {save_path}")
 
 if __name__ == "__main__":
