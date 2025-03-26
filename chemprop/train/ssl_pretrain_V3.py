@@ -1,33 +1,3 @@
-        logging.info(f"Epoch {epoch}/{args.epochs} | Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f} | "
-                     f"(node: {loss_node:.4f}, edge: {loss_edge:.4f}, graph: {loss_graph:.4f})")
-
-        # Step the learning rate scheduler
-        scheduler.step(avg_val_loss)
-
-        # Check for improvement
-        if avg_val_loss < best_val_loss:
-            best_val_loss = avg_val_loss
-            best_epoch = epoch
-            epochs_no_improve = 0
-
-            os.makedirs(args.save_dir, exist_ok=True)
-            save_path = os.path.join(args.save_dir, "model.pt")
-            torch.save({
-                'state_dict': model.state_dict(),
-                'args': vars(args),
-                'best_epoch': best_epoch,
-                'best_val_loss': best_val_loss
-            }, save_path)
-            logging.info(f"✅ Saved best model to {save_path} (val_loss={best_val_loss:.4f}, epoch={best_epoch})")
-        else:
-            epochs_no_improve += 1
-            logging.info(f"No improvement. Patience counter: {epochs_no_improve}/{patience}")
-
-        # Early stopping
-        if epochs_no_improve >= patience:
-            logging.info(f"⏹️ Early stopping triggered after {patience} epochs with no improvement.")
-            break
-
 # ssl_pretrain_V3.py
 """
 Self-supervised pretraining script for polymer-chemprop.
@@ -338,6 +308,7 @@ def main():
     parser.add_argument('--pretrain_frac', type=float, default=1.0, help='Fraction of dataset to use for pretraining.')
     parser.add_argument('--val_frac', type=float, default=0.1, help='Fraction of data to use for validation.')
     parser.add_argument('--epochs', type=int, default=10, help='Number of training epochs.')
+    parser.add_argument('--patience', type=int, default=5, help='Early stopping patience (epochs without val improvement).')
     parser.add_argument('--batch_size', type=int, default=32, help='Batch size for training.')
     parser.add_argument('--hidden_size', type=int, default=300, help='Hidden dimensionality for GNN.')
     parser.add_argument('--depth', type=int, default=3, help='Number of message passing steps.')
@@ -400,9 +371,9 @@ def main():
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=3, factor=0.5, verbose=True)
     best_val_loss = float('inf')
-    best_epoch = 0
+    best_epoch = -1
     epochs_no_improve = 0
-    patience = 10  # <-- You can make this configurable via argparse if needed
+    patience = args.patience # <-- You can make this configurable via argparse if needed
     
     for epoch in range(1, args.epochs+1):
         model.train()
