@@ -151,6 +151,7 @@ class SSLPretrainModel(nn.Module):
         src_atom_feats = atom_feats[edge_src]  # [E, atom_feat_dim]
         edge_input = torch.cat([src_atom_feats, edge_feats], dim=1)  # [E, atom_feat_dim + bond_feat_dim]
         hidden_edges = F.relu(self.W_initial(edge_input))
+        hidden_edges = F.dropout(hidden_edges, p=self.dropout, training=self.training)
         E = hidden_edges.size(0)
         N = atom_feats.size(0)
         for t in range(self.depth):
@@ -163,6 +164,7 @@ class SSLPretrainModel(nn.Module):
             else:
                 msg = torch.zeros((0, self.hidden_size), device=hidden_edges.device)
             hidden_edges = F.relu(self.W_message(msg))
+            hidden_edges = F.dropout(hidden_edges, p=self.dropout, training=self.training)
         # Final node embeddings
         node_repr = torch.zeros((N, self.hidden_size), device=hidden_edges.device)
         if E > 0:
