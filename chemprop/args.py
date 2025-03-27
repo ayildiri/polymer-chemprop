@@ -379,6 +379,8 @@ class TrainArgs(CommonArgs):
     """
 
     # Training arguments
+    train_frac: float = 1.0
+    """Fraction of the training dataset to use (e.g., 0.01 for 1% training data)."""
     epochs: int = 30
     """Number of epochs to run."""
     warmup_epochs: float = 2.0
