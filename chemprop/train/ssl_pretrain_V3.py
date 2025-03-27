@@ -11,6 +11,8 @@ import random
 import argparse
 import numpy as np
 import pandas as pd
+import pickle
+
 try:
     from rdkit import Chem
     from rdkit.Chem import rdchem
