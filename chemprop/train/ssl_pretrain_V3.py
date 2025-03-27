@@ -389,7 +389,7 @@ def main():
     total_params = sum(p.numel() for p in model.parameters())
     logging.info(f"🧠 Model has {total_params:,} parameters.")
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=args.patience, factor=0.5, verbose=True)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=args.patience, factor=0.5)
     best_val_loss = float('inf')
     best_epoch = -1
     epochs_no_improve = 0
@@ -510,6 +510,8 @@ def main():
 
         # Step the learning rate scheduler
         scheduler.step(avg_val_loss)
+        current_lr = scheduler.optimizer.param_groups[0]['lr']
+        logging.info(f"📉 Learning rate after scheduler step: {current_lr:.6e}")
 
         # Check for improvement
         if avg_val_loss < best_val_loss:
