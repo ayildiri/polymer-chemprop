@@ -309,6 +309,7 @@ def main():
     parser.add_argument('--polymer', action='store_true', help='Use polymer-specific atom featurization.')
     parser.add_argument('--pretrain_frac', type=float, default=1.0, help='Fraction of dataset to use for pretraining.')
     parser.add_argument('--val_frac', type=float, default=0.1, help='Fraction of data to use for validation.')
+    parser.add_argument('--pretrain_folds_file', type=str, default=None,help='Optional path to a pickle file defining pretrain splits')
     parser.add_argument('--epochs', type=int, default=10, help='Number of training epochs.')
     parser.add_argument('--patience', type=int, default=5, help='Early stopping patience (epochs without val improvement).')
     parser.add_argument('--batch_size', type=int, default=32, help='Batch size for training.')
@@ -337,15 +338,26 @@ def main():
     if SMILES_COL not in df.columns:
         logging.error(f"Column '{SMILES_COL}' not found in data file.")
         return
+        
     smiles_list = df[SMILES_COL].astype(str).tolist()
     total_data = len(smiles_list)
-    if args.pretrain_frac < 1.0:
+
+    if args.pretrain_folds_file is not None:
+        with open(args.pretrain_folds_file, "rb") as f:
+            folds = pickle.load(f)
+        if len(folds) != len(df):
+            raise ValueError(f"Length of pretrain_folds_file ({len(folds)}) does not match dataset ({len(df)}).")
+        pretrain_indices = [i for i, fold in enumerate(folds) if fold == 0]
+        smiles_list = [smiles_list[i] for i in pretrain_indices]
+        logging.info(f"Using {len(smiles_list)} samples from pretrain_folds_file for SSL pretraining.")
+    elif args.pretrain_frac < 1.0:
         subset_size = int(total_data * args.pretrain_frac)
         subset_size = max(subset_size, 1)
         smiles_list = random.sample(smiles_list, subset_size)
         logging.info(f"Subsampling dataset to {subset_size} entries out of {total_data}.")
     else:
         logging.info(f"Using full dataset of {total_data} entries.")
+
     graphs = []
     for smi in smiles_list:
         if not isinstance(smi, str):
