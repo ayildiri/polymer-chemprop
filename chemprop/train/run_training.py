@@ -132,7 +132,14 @@ def run_training(args: TrainArgs,
         test_data.normalize_features(bond_feature_scaler, scale_bond_features=True)
     else:
         bond_feature_scaler = None
-
+        
+    # Optionally subsample training data if --train_frac < 1.0
+    if args.train_frac < 1.0:
+        subset_size = int(len(train_data) * args.train_frac)
+        rng = np.random.default_rng(seed=args.seed)
+        selected_indices = rng.choice(len(train_data), size=subset_size, replace=False)
+        train_data = MoleculeDataset([train_data[i] for i in selected_indices])
+        debug(f'Subsampled training set to {subset_size:,} entries (train_frac={args.train_frac})')
     args.train_data_size = len(train_data)
 
     debug(f'Total size = {len(data):,} | '
