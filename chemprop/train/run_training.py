@@ -297,7 +297,7 @@ def run_training(args: TrainArgs,
         model = model.to(args.device)
 
         # Ensure that model is saved in correct location for evaluation if 0 epochs
-        save_checkpoint(os.path.join(save_dir, MODEL_FILE_NAME), model, scaler,
+        save_checkpoint(os.path.join(save_dir, 'initial_model.pt'), model, scaler,
                         features_scaler, atom_descriptor_scaler, bond_feature_scaler, args)
 
 
@@ -334,31 +334,32 @@ def run_training(args: TrainArgs,
                 avg_val_score = np.nanmean(scores)
                 debug(f'Validation {metric} = {avg_val_score:.6f}')
                 writer.add_scalar(f'validation_{metric}', avg_val_score, n_iter)
-
+                
                 if args.show_individual_scores:
                     # Individual validation scores
                     for task_name, val_score in zip(args.task_names, scores):
                         debug(f'Validation {task_name} {metric} = {val_score:.6f}')
                         writer.add_scalar(f'validation_{task_name}_{metric}', val_score, n_iter)
                         # ✅ Save resume checkpoint after every epoch
-                        torch.save({
+            
+                torch.save({
                             'model_state_dict': model.state_dict(),
                             'optimizer_state_dict': optimizer.state_dict(),
                             'scheduler_state_dict': scheduler.state_dict(),
                             'epoch': epoch
-                        }, os.path.join(save_dir, 'resume_checkpoint.pt'))
+                        }, os.path.join(save_dir, 'model.pt'))            
 
             # Save model checkpoint if improved validation score
             avg_val_score = np.nanmean(val_scores[args.metric])
             if args.minimize_score and avg_val_score < best_score or \
                     not args.minimize_score and avg_val_score > best_score:
                 best_score, best_epoch = avg_val_score, epoch
-                save_checkpoint(os.path.join(save_dir, MODEL_FILE_NAME), model, scaler, features_scaler,
+                save_checkpoint(os.path.join(save_dir, 'best_model.pt'), model, scaler, features_scaler,
                                 atom_descriptor_scaler, bond_feature_scaler, args)
 
         # Evaluate on test set using model with best validation score
         info(f'Model {model_idx} best validation {args.metric} = {best_score:.6f} on epoch {best_epoch}')
-        model = load_checkpoint(os.path.join(save_dir, MODEL_FILE_NAME), device=args.device, logger=logger)
+        model = load_checkpoint(os.path.join(save_dir, 'best_model.pt'), device=args.device, logger=logger)
 
         test_preds = predict(
             model=model,
