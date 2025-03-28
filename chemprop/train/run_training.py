@@ -340,6 +340,13 @@ def run_training(args: TrainArgs,
                     for task_name, val_score in zip(args.task_names, scores):
                         debug(f'Validation {task_name} {metric} = {val_score:.6f}')
                         writer.add_scalar(f'validation_{task_name}_{metric}', val_score, n_iter)
+                        # ✅ Save resume checkpoint after every epoch
+                        torch.save({
+                            'model_state_dict': model.state_dict(),
+                            'optimizer_state_dict': optimizer.state_dict(),
+                            'scheduler_state_dict': scheduler.state_dict(),
+                            'epoch': epoch
+                        }, os.path.join(save_dir, 'resume_checkpoint.pt'))
 
             # Save model checkpoint if improved validation score
             avg_val_score = np.nanmean(val_scores[args.metric])
