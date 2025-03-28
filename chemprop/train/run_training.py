@@ -300,11 +300,6 @@ def run_training(args: TrainArgs,
         save_checkpoint(os.path.join(save_dir, MODEL_FILE_NAME), model, scaler,
                         features_scaler, atom_descriptor_scaler, bond_feature_scaler, args)
 
-        # Optimizers
-        optimizer = build_optimizer(model, args)
-
-        # Learning rate schedulers
-        scheduler = build_lr_scheduler(optimizer, args)
 
         # Run training
         best_score = float('inf') if args.minimize_score else -float('inf')
