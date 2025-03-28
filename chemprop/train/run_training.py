@@ -328,7 +328,7 @@ def run_training(args: TrainArgs,
                 scaler=scaler,
                 logger=logger
             )
-
+            debug(f"📊 Raw val_scores: {val_scores}")
             for metric, scores in val_scores.items():
                 # Average validation score
                 avg_val_score = np.nanmean(scores)
