@@ -217,9 +217,25 @@ def run_training(args: TrainArgs,
             writer = SummaryWriter(logdir=save_dir)
             
         model = MoleculeModel(args)
+        start_epoch = 0
+        
         # Load/build model
-        if args.checkpoint_frzn is not None:
-            debug(f'Loading and freezing parameters from {args.checkpoint_frzn}.')
+
+        # 🔁 Option 1: Resume from full checkpoint
+        if args.resume_from_checkpoint is not None:
+            debug(f'🔁 Resuming full training from checkpoint: {args.resume_from_checkpoint}')
+            checkpoint = torch.load(args.resume_from_checkpoint, map_location='cpu')
+            model.load_state_dict(checkpoint['model_state_dict'])
+            optimizer = build_optimizer(model, args)
+            scheduler = build_lr_scheduler(optimizer, args)
+            optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+            scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+            start_epoch = checkpoint['epoch'] + 1
+            debug(f"➡️  Resumed at epoch {start_epoch}")
+
+        # ❄️ Option 2: Load and freeze SSL weights
+        elif args.checkpoint_frzn is not None:
+            debug(f'❄️Loading and freezing parameters from {args.checkpoint_frzn}.')
             ssl_checkpoint = torch.load(args.checkpoint_frzn, map_location='cpu')
             
             # Safely unpack state_dict
@@ -247,27 +263,27 @@ def run_training(args: TrainArgs,
                 for i in range(args.frzn_ffn_layers):
                     ffn_state_dict[f'{2*i}.weight'] = ssl_state_dict[f'graph_head.{2*i}.weight']
                     ffn_state_dict[f'{2*i}.bias'] = ssl_state_dict[f'graph_head.{2*i}.bias']
+                
+                model.ffn.load_state_dict(ffn_state_dict)   
+                    
+                for i in range(args.frzn_ffn_layers):
                     model.ffn[2*i].weight.requires_grad = False
                     model.ffn[2*i].bias.requires_grad = False
-                model.ffn.load_state_dict(ffn_state_dict)
-    
-        else:
-            debug(f'Building model {model_idx}')
-            model = MoleculeModel(args)
-    
-        # Freeze FFN layers if specified
-        if args.frzn_ffn_layers > 0:
-            for i in range(args.frzn_ffn_layers):
-                for param in model.ffn[i * 2].parameters():  # Only freeze Linear layers (not activations)
-                    param.requires_grad = False
-            debug(f"✅ First {args.frzn_ffn_layers} FFN layers frozen.")
 
-            
+            debug(f"✅ First {args.frzn_ffn_layers} FFN layers frozen.")
+                
+            optimizer = build_optimizer(model, args)
+            scheduler = build_lr_scheduler(optimizer, args)
+        else:
+            debug(f'🛠️ Building model {model_idx} from scratch.')
+            model = MoleculeModel(args)
+            optimizer = build_optimizer(model, args)
+            scheduler = build_lr_scheduler(optimizer, args)
+         
         # Optionally, overwrite weights:
         if args.checkpoint_frzn is not None:
             debug(f'Loading and freezing parameters from {args.checkpoint_frzn}.')
                 
-        
         debug(model)
         
         if args.checkpoint_frzn is not None:
@@ -293,7 +309,7 @@ def run_training(args: TrainArgs,
         # Run training
         best_score = float('inf') if args.minimize_score else -float('inf')
         best_epoch, n_iter = 0, 0
-        for epoch in trange(args.epochs):
+        for epoch in trange(start_epoch, args.epochs):
             debug(f'Epoch {epoch}')
             n_iter = train(
                 model=model,
