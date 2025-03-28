@@ -297,7 +297,7 @@ def run_training(args: TrainArgs,
         model = model.to(args.device)
 
         # Ensure that model is saved in correct location for evaluation if 0 epochs
-        save_checkpoint(os.path.join(save_dir, 'MODEL_FILE_NAME'), model, scaler,
+        save_checkpoint(os.path.join(save_dir, MODEL_FILE_NAME), model, scaler,
                         features_scaler, atom_descriptor_scaler, bond_feature_scaler, args)
 
 
