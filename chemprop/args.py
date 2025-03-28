@@ -294,6 +294,8 @@ class TrainArgs(CommonArgs):
     """
     save_preds: bool = False
     """Whether to save test split predictions during training."""
+    resume_from_checkpoint: Optional[str] = None
+    """Optional path to a model checkpoint (.pt file) to resume training from."""
     resume_experiment: bool = False
     """
     Whether to resume the experiment.
