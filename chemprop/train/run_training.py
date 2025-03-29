@@ -354,9 +354,7 @@ def run_training(args: TrainArgs,
             if args.minimize_score and avg_val_score < best_score or \
                     not args.minimize_score and avg_val_score > best_score:
                 best_score, best_epoch = avg_val_score, epoch
-                save_checkpoint(os.path.join(save_dir, 'best_model.pt'), model, scaler, features_scaler,
-                                atom_descriptor_scaler, bond_feature_scaler, args)
-
+                
                 # Save best_model.pt (for prediction use only)
                 torch.save(model.state_dict(), os.path.join(save_dir, 'best_model.pt'))
 
