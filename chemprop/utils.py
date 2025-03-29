@@ -95,7 +95,8 @@ def load_checkpoint(path: str, device: torch.device = None, logger=None) -> Unio
     if logger:
         logger.debug(f"📦 Loading checkpoint from {path}")
     
-    state = torch.load(path, map_location=device or 'cpu', weights_only=False)
+    with safe_globals([np.float64, Namespace]):
+        state = torch.load(path, map_location=device or 'cpu', weights_only=False)
 
     # If it's a model-only checkpoint (just weights)
     if isinstance(state, dict) and 'model_state_dict' not in state:
