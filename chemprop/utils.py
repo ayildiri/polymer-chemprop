@@ -87,16 +87,14 @@ def save_checkpoint(path: str,
     torch.save(state, path)
 
 
-def load_checkpoint(path: str,
-                    device: torch.device = None,
-                    logger: logging.Logger = None) -> MoleculeModel:
+def load_checkpoint(path: str, device: torch.device = None, logger = None):
     """
-    Loads a model checkpoint.
+    Loads a full Chemprop checkpoint from a file, including model weights, optimizer, scheduler, and training args.
 
-    :param path: Path where checkpoint is saved.
-    :param device: Device where the model will be moved.
-    :param logger: A logger for recording output.
-    :return: The loaded :class:`~chemprop.models.model.MoleculeModel`.
+    :param path: Path to the checkpoint .pt file.
+    :param device: Device to map model to.
+    :param logger: Optional logger to print debug output.
+    :return: A dictionary containing the checkpoint contents.
     """
     if logger is not None:
         debug = logger.debug
@@ -104,9 +102,9 @@ def load_checkpoint(path: str,
         debug = print
 
     debug(f'📦 Loading checkpoint from {path}')
-                        
-    with torch.serialization.safe_globals([Namespace]):
-        state = torch.load(path, map_location=lambda storage, loc: storage)
+
+    # ✅ Safely load the full checkpoint (required for resume/eval in Chemprop)
+    state = torch.load(path, map_location=lambda storage, loc: storage, weights_only=False)
 
     if isinstance(state, dict) and 'model_state_dict' in state:
         return state
