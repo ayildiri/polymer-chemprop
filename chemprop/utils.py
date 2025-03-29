@@ -94,20 +94,19 @@ def load_checkpoint(path: str, device: torch.device = None, logger=None) -> torc
     if logger:
         logger.debug(f"📦 Loading checkpoint from {path}")
 
-    # ✅ Safely allow TrainArgs class in the pickle load context
-    torch.serialization.add_safe_class(TrainArgs)
+    # ✅ Allow TrainArgs class in pickle deserialization (for PyTorch 2.6+)
+    torch.serialization.add_safe_globals([TrainArgs])
 
-    # ✅ Explicitly load full checkpoint (not weights-only, which is True by default in PyTorch 2.6+)
+    # 🔒 Explicitly load full checkpoint (not just weights)
     state = torch.load(path, map_location=device or 'cpu', weights_only=False)
 
-    # 🔍 Handle both old and new checkpoint formats
+    # Support both older and newer checkpoint formats
     if 'model' in state:
         return state['model']
     elif 'model_state_dict' in state:
         return state
     else:
         raise ValueError(f"Checkpoint at {path} is not a valid Chemprop checkpoint.")
-
 
     # Load model and args
     state = torch.load(path, map_location=lambda storage, loc: storage)
