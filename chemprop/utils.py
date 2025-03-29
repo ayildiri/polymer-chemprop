@@ -104,9 +104,9 @@ def load_checkpoint(path: str,
         debug = print
 
     debug(f'📦 Loading checkpoint from {path}')
-
-    # ✅ Safely load the full checkpoint (required for resume/eval in Chemprop)
-    state = torch.load(path, map_location=lambda storage, loc: storage, weights_only=False)
+                        
+    with torch.serialization.safe_globals([Namespace]):
+        state = torch.load(path, map_location=lambda storage, loc: storage)
 
     if isinstance(state, dict) and 'model_state_dict' in state:
         return state
