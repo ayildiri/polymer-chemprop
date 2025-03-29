@@ -200,7 +200,7 @@ def run_training(args: TrainArgs,
 
         if args.resume_from_checkpoint is not None:
             debug(f'🔁 Resuming full training from checkpoint: {args.resume_from_checkpoint}')
-            checkpoint = torch.load(args.resume_from_checkpoint, map_location='cpu')
+            checkpoint = torch.load(os.path.join(save_dir, 'best_resume_checkpoint.pt'), map_location=args.device, weights_only=False)
             model.load_state_dict(checkpoint['model_state_dict'])
             optimizer = build_optimizer(model, args)
             scheduler = build_lr_scheduler(optimizer, args)
