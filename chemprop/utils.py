@@ -98,10 +98,23 @@ def load_checkpoint(path: str,
     :param logger: A logger for recording output.
     :return: The loaded :class:`~chemprop.models.model.MoleculeModel`.
     """
+    from argparse import Namespace
+
+def load_checkpoint(path: str, device: torch.device = None, logger = None):
     if logger is not None:
-        debug, info = logger.debug, logger.info
+        debug = logger.debug
     else:
-        debug = info = print
+        debug = print
+
+    debug(f'📦 Loading checkpoint from {path}')
+    with torch.serialization.safe_globals([Namespace]):
+        state = torch.load(path, map_location=lambda storage, loc: storage)
+
+    if isinstance(state, dict) and 'model_state_dict' in state:
+        return state
+    else:
+        raise ValueError(f"Checkpoint at {path} is not a full training checkpoint.")
+
 
     # Load model and args
     state = torch.load(path, map_location=lambda storage, loc: storage)
