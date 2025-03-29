@@ -200,7 +200,14 @@ def run_training(args: TrainArgs,
 
         if args.resume_from_checkpoint is not None:
             debug(f'🔁 Resuming full training from checkpoint: {args.resume_from_checkpoint}')
-            checkpoint = torch.load(os.path.join(save_dir, 'best_resume_checkpoint.pt'), map_location=args.device, weights_only=False)
+            
+            # ✅ Safe unpickling with PyTorch 2.6+ (allow trusted types)
+            with safe_globals([Namespace, np.float64, np.ndarray]):
+                checkpoint = torch.load(
+                    os.path.join(save_dir, 'best_resume_checkpoint.pt'),
+                    map_location=args.device,
+                    weights_only=False
+                )
             model.load_state_dict(checkpoint['model_state_dict'])
             optimizer = build_optimizer(model, args)
             scheduler = build_lr_scheduler(optimizer, args)
@@ -320,7 +327,11 @@ def run_training(args: TrainArgs,
                 }, os.path.join(save_dir, 'best_resume_checkpoint.pt'))
 
         info(f'Model {model_idx} best validation {args.metric} = {best_score:.6f} on epoch {best_epoch}')
-        model.load_state_dict(torch.load(os.path.join(save_dir, 'best_resume_checkpoint.pt'))['model_state_dict'])
+        
+        with safe_globals([Namespace, np.float64, np.ndarray]):
+            checkpoint = torch.load(os.path.join(save_dir, 'best_resume_checkpoint.pt'), map_location=args.device, weights_only=False)
+        
+        model.load_state_dict(checkpoint['model_state_dict'])
 
         test_preds = predict(
             model=model,
