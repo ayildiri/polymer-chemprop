@@ -106,8 +106,7 @@ def load_checkpoint(path: str, device: torch.device = None, logger=None) -> torc
     elif 'model_state_dict' in state:
         return state
     else:
-        # ✅ Assume it's a Chemprop model-only checkpoint
-        return torch.load(path, map_location=device or 'cpu')
+       return state  # fallback for minimal checkpoint
 
     # Load model and args
     state = torch.load(path, map_location=lambda storage, loc: storage)
