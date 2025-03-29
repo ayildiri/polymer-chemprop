@@ -87,21 +87,26 @@ def save_checkpoint(path: str,
     torch.save(state, path)
 
 
-def load_checkpoint(path: str,
-                    device: torch.device = None,
-                    logger: logging.Logger = None) -> MoleculeModel:
-    """
-    Loads a model checkpoint.
+import torch.serialization
+from chemprop.args import TrainArgs  # ✅ needed for loading args safely
 
-    :param path: Path where checkpoint is saved.
-    :param device: Device where the model will be moved.
-    :param logger: A logger for recording output.
-    :return: The loaded :class:`~chemprop.models.model.MoleculeModel`.
-    """
-    if logger is not None:
-        debug, info = logger.debug, logger.info
+def load_checkpoint(path: str, device: torch.device = None, logger=None) -> torch.nn.Module:
+    if logger:
+        logger.debug(f"📦 Loading checkpoint from {path}")
+
+    # ✅ Safely allow TrainArgs class in the pickle load context
+    torch.serialization.add_safe_class(TrainArgs)
+
+    # ✅ Explicitly load full checkpoint (not weights-only, which is True by default in PyTorch 2.6+)
+    state = torch.load(path, map_location=device or 'cpu', weights_only=False)
+
+    # 🔍 Handle both old and new checkpoint formats
+    if 'model' in state:
+        return state['model']
+    elif 'model_state_dict' in state:
+        return state
     else:
-        debug = info = print
+        raise ValueError(f"Checkpoint at {path} is not a valid Chemprop checkpoint.")
 
 
     # Load model and args
