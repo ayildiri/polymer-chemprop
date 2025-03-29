@@ -357,6 +357,14 @@ def run_training(args: TrainArgs,
                 save_checkpoint(os.path.join(save_dir, 'best_model.pt'), model, scaler, features_scaler,
                                 atom_descriptor_scaler, bond_feature_scaler, args)
 
+                # ✅ ALSO save best full checkpoint for resume
+                torch.save({
+                    'model_state_dict': model.state_dict(),
+                    'optimizer_state_dict': optimizer.state_dict(),
+                    'scheduler_state_dict': scheduler.state_dict(),
+                    'epoch': epoch
+                }, os.path.join(save_dir, 'best_resume_checkpoint.pt'))
+
         # Evaluate on test set using model with best validation score
         info(f'Model {model_idx} best validation {args.metric} = {best_score:.6f} on epoch {best_epoch}')
         model = load_checkpoint(os.path.join(save_dir, 'best_model.pt'), device=args.device, logger=logger)
