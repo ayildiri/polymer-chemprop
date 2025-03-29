@@ -3,6 +3,7 @@ from logging import Logger
 import os
 from typing import Dict, List, Union
 from torch.serialization import safe_globals
+from argparse import Namespace
 import numpy as np
 import pandas as pd
 from tensorboardX import SummaryWriter
