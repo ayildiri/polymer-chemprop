@@ -354,10 +354,7 @@ def run_training(args: TrainArgs,
             if args.minimize_score and avg_val_score < best_score or \
                     not args.minimize_score and avg_val_score > best_score:
                 best_score, best_epoch = avg_val_score, epoch
-                
-                # Save best_model.pt (for prediction use only)
-                torch.save(model.state_dict(), os.path.join(save_dir, 'best_model.pt'))
-
+            
                 # ✅ ALSO save best full checkpoint for resume
                 torch.save({
                     'model_state_dict': model.state_dict(),
