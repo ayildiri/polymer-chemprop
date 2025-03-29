@@ -1,4 +1,5 @@
 from argparse import Namespace
+from typing import Dict, Union
 import csv
 from datetime import timedelta
 from functools import wraps
