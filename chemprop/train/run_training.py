@@ -1,7 +1,7 @@
 import json
 from logging import Logger
 import os
-from typing import Dict, List
+from typing import Dict, List, Union
 
 import numpy as np
 import pandas as pd
@@ -22,29 +22,16 @@ from chemprop.nn_utils import param_count, param_count_all
 from chemprop.utils import build_optimizer, build_lr_scheduler, get_loss_func, load_checkpoint, makedirs, \
     save_checkpoint, save_smiles_splits, load_frzn_model
 
-
 def run_training(args: TrainArgs,
                  data: MoleculeDataset,
                  logger: Logger = None) -> Dict[str, List[float]]:
-    """
-    Loads data, trains a Chemprop model, and returns test scores for the model checkpoint with the highest validation score.
-
-    :param args: A :class:`~chemprop.args.TrainArgs` object containing arguments for
-                 loading data and training the Chemprop model.
-    :param data: A :class:`~chemprop.data.MoleculeDataset` containing the data.
-    :param logger: A logger to record output.
-    :return: A dictionary mapping each metric in :code:`args.metrics` to a list of values for each task.
-
-    """
     if logger is not None:
         debug, info = logger.debug, logger.info
     else:
         debug = info = print
 
-    # Set pytorch seed for random initial weights
     torch.manual_seed(args.pytorch_seed)
 
-    # Split data
     debug(f'Splitting data with seed {args.seed}')
     if args.separate_test_path:
         test_data = get_data(path=args.separate_test_path,
@@ -132,8 +119,7 @@ def run_training(args: TrainArgs,
         test_data.normalize_features(bond_feature_scaler, scale_bond_features=True)
     else:
         bond_feature_scaler = None
-        
-    # Optionally subsample training data if --train_frac < 1.0
+
     if args.train_frac < 1.0:
         subset_size = int(len(train_data) * args.train_frac)
         rng = np.random.default_rng(seed=args.seed)
@@ -145,7 +131,6 @@ def run_training(args: TrainArgs,
     debug(f'Total size = {len(data):,} | '
           f'train size = {len(train_data):,} | val size = {len(val_data):,} | test size = {len(test_data):,}')
 
-    # Initialize scaler and scale training targets by subtracting mean and dividing standard deviation (regression only)
     if args.dataset_type == 'regression':
         debug('Fitting scaler')
         scaler = train_data.normalize_targets()
@@ -165,17 +150,14 @@ def run_training(args: TrainArgs,
     else:
         scaler = None
 
-    # Get loss function
     loss_func = get_loss_func(args)
 
-    # Set up test set evaluation
     test_smiles, test_targets = test_data.smiles(), test_data.targets()
     if args.dataset_type == 'multiclass':
         sum_test_preds = np.zeros((len(test_smiles), args.num_tasks, args.multiclass_num_classes))
     else:
         sum_test_preds = np.zeros((len(test_smiles), args.num_tasks))
 
-    # Automatically determine whether to cache
     if len(data) <= args.cache_cutoff:
         set_cache_graph(True)
         num_workers = 0
@@ -183,7 +165,6 @@ def run_training(args: TrainArgs,
         set_cache_graph(False)
         num_workers = args.num_workers
 
-    # Create data loaders
     train_data_loader = MoleculeDataLoader(
         dataset=train_data,
         batch_size=args.batch_size,
@@ -206,22 +187,17 @@ def run_training(args: TrainArgs,
     if args.class_balance:
         debug(f'With class_balance, effective train size = {train_data_loader.iter_size:,}')
 
-    # Train ensemble of models
     for model_idx in range(args.ensemble_size):
-        # Tensorboard writer
         save_dir = os.path.join(args.save_dir, f'model_{model_idx}')
         makedirs(save_dir)
         try:
             writer = SummaryWriter(log_dir=save_dir)
         except:
             writer = SummaryWriter(logdir=save_dir)
-            
+
         model = MoleculeModel(args)
         start_epoch = 0
-        
-        # Load/build model
 
-        # 🔁 Option 1: Resume from full checkpoint
         if args.resume_from_checkpoint is not None:
             debug(f'🔁 Resuming full training from checkpoint: {args.resume_from_checkpoint}')
             checkpoint = torch.load(args.resume_from_checkpoint, map_location='cpu')
@@ -233,15 +209,11 @@ def run_training(args: TrainArgs,
             start_epoch = checkpoint['epoch'] + 1
             debug(f"➡️  Resumed at epoch {start_epoch}")
 
-        # ❄️ Option 2: Load and freeze SSL weights
         elif args.checkpoint_frzn is not None:
             debug(f'❄️Loading and freezing parameters from {args.checkpoint_frzn}.')
             ssl_checkpoint = torch.load(args.checkpoint_frzn, map_location='cpu')
-            
-            # Safely unpack state_dict
             ssl_state_dict = ssl_checkpoint['state_dict']
-            
-            # Load encoder layers
+
             encoder_layers = model.encoder.encoder
             encoder_layers[0].W_i.load_state_dict({
                 'weight': ssl_state_dict['W_initial.weight']
@@ -249,29 +221,25 @@ def run_training(args: TrainArgs,
             encoder_layers[0].W_h.load_state_dict({
                 'weight': ssl_state_dict['W_message.weight']
             })
-            
-            # Freeze encoder weights
+
             for param in encoder_layers[0].W_i.parameters():
                 param.requires_grad = False
             for param in encoder_layers[0].W_h.parameters():
                 param.requires_grad = False
-        
-            # Optionally transfer and freeze FFN layers
+
             if args.frzn_ffn_layers > 0:
                 debug(f'Transferring and freezing first {args.frzn_ffn_layers} FFN layers from SSL model.')
                 ffn_state_dict = model.ffn.state_dict()
                 for i in range(args.frzn_ffn_layers):
                     ffn_state_dict[f'{2*i}.weight'] = ssl_state_dict[f'graph_head.{2*i}.weight']
                     ffn_state_dict[f'{2*i}.bias'] = ssl_state_dict[f'graph_head.{2*i}.bias']
-                
-                model.ffn.load_state_dict(ffn_state_dict)   
-                    
+                model.ffn.load_state_dict(ffn_state_dict)
                 for i in range(args.frzn_ffn_layers):
                     model.ffn[2*i].weight.requires_grad = False
                     model.ffn[2*i].bias.requires_grad = False
 
             debug(f"✅ First {args.frzn_ffn_layers} FFN layers frozen.")
-                
+
             optimizer = build_optimizer(model, args)
             scheduler = build_lr_scheduler(optimizer, args)
         else:
@@ -279,29 +247,22 @@ def run_training(args: TrainArgs,
             model = MoleculeModel(args)
             optimizer = build_optimizer(model, args)
             scheduler = build_lr_scheduler(optimizer, args)
-         
-        # Optionally, overwrite weights:
-        if args.checkpoint_frzn is not None:
-            debug(f'Loading and freezing parameters from {args.checkpoint_frzn}.')
-                
+
         debug(model)
-        
+
         if args.checkpoint_frzn is not None:
             debug(f'Number of unfrozen parameters = {param_count(model):,}')
             debug(f'Total number of parameters = {param_count_all(model):,}')
         else:
             debug(f'Number of parameters = {param_count_all(model):,}')
-        
+
         if args.cuda:
             debug('Moving model to cuda')
         model = model.to(args.device)
 
-        # Ensure that model is saved in correct location for evaluation if 0 epochs
         save_checkpoint(os.path.join(save_dir, MODEL_FILE_NAME), model, scaler,
                         features_scaler, atom_descriptor_scaler, bond_feature_scaler, args)
 
-
-        # Run training
         best_score = float('inf') if args.minimize_score else -float('inf')
         best_epoch, n_iter = 0, 0
         for epoch in trange(start_epoch, args.epochs):
@@ -330,32 +291,27 @@ def run_training(args: TrainArgs,
             )
             debug(f"📊 Raw val_scores: {val_scores}")
             for metric, scores in val_scores.items():
-                # Average validation score
                 avg_val_score = np.nanmean(scores)
                 debug(f'Validation {metric} = {avg_val_score:.6f}')
                 writer.add_scalar(f'validation_{metric}', avg_val_score, n_iter)
-                
+
                 if args.show_individual_scores:
-                    # Individual validation scores
                     for task_name, val_score in zip(args.task_names, scores):
                         debug(f'Validation {task_name} {metric} = {val_score:.6f}')
                         writer.add_scalar(f'validation_{task_name}_{metric}', val_score, n_iter)
-                        # ✅ Save resume checkpoint after every epoch
-            
-                torch.save({
-                            'model_state_dict': model.state_dict(),
-                            'optimizer_state_dict': optimizer.state_dict(),
-                            'scheduler_state_dict': scheduler.state_dict(),
-                            'epoch': epoch
-                        }, os.path.join(save_dir, 'model.pt'))            
 
-            # Save model checkpoint if improved validation score
+            torch.save({
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'scheduler_state_dict': scheduler.state_dict(),
+                'epoch': epoch
+            }, os.path.join(save_dir, 'model.pt'))
+
             avg_val_score = np.nanmean(val_scores[args.metric])
             if args.minimize_score and avg_val_score < best_score or \
                     not args.minimize_score and avg_val_score > best_score:
                 best_score, best_epoch = avg_val_score, epoch
-            
-                # ✅ ALSO save best full checkpoint for resume
+
                 torch.save({
                     'model_state_dict': model.state_dict(),
                     'optimizer_state_dict': optimizer.state_dict(),
@@ -363,9 +319,8 @@ def run_training(args: TrainArgs,
                     'epoch': epoch
                 }, os.path.join(save_dir, 'best_resume_checkpoint.pt'))
 
-        # Evaluate on test set using model with best validation score
         info(f'Model {model_idx} best validation {args.metric} = {best_score:.6f} on epoch {best_epoch}')
-        model = load_checkpoint(os.path.join(save_dir, 'best_model.pt'), device=args.device, logger=logger)
+        model.load_state_dict(torch.load(os.path.join(save_dir, 'best_resume_checkpoint.pt'))['model_state_dict'])
 
         test_preds = predict(
             model=model,
@@ -384,20 +339,17 @@ def run_training(args: TrainArgs,
         if len(test_preds) != 0:
             sum_test_preds += np.array(test_preds)
 
-        # Average test score
         for metric, scores in test_scores.items():
             avg_test_score = np.nanmean(scores)
             info(f'Model {model_idx} test {metric} = {avg_test_score:.6f}')
             writer.add_scalar(f'test_{metric}', avg_test_score, 0)
 
             if args.show_individual_scores and args.dataset_type != 'spectra':
-                # Individual test scores
                 for task_name, test_score in zip(args.task_names, scores):
                     info(f'Model {model_idx} test {task_name} {metric} = {test_score:.6f}')
                     writer.add_scalar(f'test_{task_name}_{metric}', test_score, n_iter)
         writer.close()
 
-    # Evaluate ensemble on test set
     avg_test_preds = (sum_test_preds / args.ensemble_size).tolist()
 
     ensemble_scores = evaluate_predictions(
@@ -410,26 +362,20 @@ def run_training(args: TrainArgs,
     )
 
     for metric, scores in ensemble_scores.items():
-        # Average ensemble score
         avg_ensemble_test_score = np.nanmean(scores)
         info(f'Ensemble test {metric} = {avg_ensemble_test_score:.6f}')
 
-        # Individual ensemble scores
         if args.show_individual_scores:
             for task_name, ensemble_score in zip(args.task_names, scores):
                 info(f'Ensemble test {task_name} {metric} = {ensemble_score:.6f}')
 
-    # Save scores
     with open(os.path.join(args.save_dir, 'test_scores.json'), 'w') as f:
         json.dump(ensemble_scores, f, indent=4, sort_keys=True)
 
-    # Optionally save test preds
     if args.save_preds:
         test_preds_dataframe = pd.DataFrame(data={'smiles': test_data.smiles()})
-
         for i, task_name in enumerate(args.task_names):
             test_preds_dataframe[task_name] = [pred[i] for pred in avg_test_preds]
-
         test_preds_dataframe.to_csv(os.path.join(args.save_dir, 'test_preds.csv'), index=False)
 
     return ensemble_scores
