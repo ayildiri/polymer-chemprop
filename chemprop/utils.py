@@ -90,29 +90,23 @@ def save_checkpoint(path: str,
 import torch.serialization
 from chemprop.args import TrainArgs  # ✅ needed for loading args safely
 
-def load_checkpoint(path: str, device: torch.device = None, logger=None) -> torch.nn.Module:
+def load_checkpoint(path: str, device: torch.device = None, logger=None) -> Union[torch.nn.Module, Dict]:
     if logger:
         logger.debug(f"📦 Loading checkpoint from {path}")
+    
+    state = torch.load(path, map_location=device or 'cpu')
 
-    # ✅ Allow TrainArgs class in pickle deserialization (for PyTorch 2.6+)
-    torch.serialization.add_safe_globals([TrainArgs])
+    # If it's a model-only checkpoint (just weights)
+    if isinstance(state, dict) and 'model_state_dict' not in state:
+        return state  # just model weights
 
-    # 🔒 Explicitly load full checkpoint (not just weights)
-    state = torch.load(path, map_location=device or 'cpu', weights_only=False)
-
-    # Support both older and newer checkpoint formats
-    if 'model' in state:
-        return state['model']
-    # Case 2: Full training checkpoint (model_state_dict + others)
+    # If it's a full training checkpoint
     elif 'model_state_dict' in state:
-        # Create a new model with the same args
-        model = MoleculeModel(state['args'])
-        model.load_state_dict(state['model_state_dict'])
-        model = model.to(device or 'cpu')
-        return model  # ✅ return only the model
+        return state
 
     else:
         raise ValueError(f"Checkpoint at {path} is not a valid Chemprop checkpoint.")
+
 
     # Load model and args
     state = torch.load(path, map_location=lambda storage, loc: storage)
