@@ -103,10 +103,16 @@ def load_checkpoint(path: str, device: torch.device = None, logger=None) -> torc
     # Support both older and newer checkpoint formats
     if 'model' in state:
         return state['model']
+    # Case 2: Full training checkpoint (model_state_dict + others)
     elif 'model_state_dict' in state:
-        return state
+        # Create a new model with the same args
+        model = MoleculeModel(state['args'])
+        model.load_state_dict(state['model_state_dict'])
+        model = model.to(device or 'cpu')
+        return model  # ✅ return only the model
+
     else:
-       return state  # fallback for minimal checkpoint
+        raise ValueError(f"Checkpoint at {path} is not a valid Chemprop checkpoint.")
 
     # Load model and args
     state = torch.load(path, map_location=lambda storage, loc: storage)
