@@ -205,7 +205,7 @@ def run_training(args: TrainArgs,
             # ✅ Safe unpickling with PyTorch 2.6+ (allow trusted types)
             with safe_globals([Namespace, np.float64, np.ndarray]):
                 checkpoint = torch.load(
-                    os.path.join(save_dir, 'best_resume_checkpoint.pt'),
+                    args.resume_from_checkpoint,
                     map_location=args.device,
                     weights_only=False
                 )
@@ -213,6 +213,11 @@ def run_training(args: TrainArgs,
             optimizer = build_optimizer(model, args)
             scheduler = build_lr_scheduler(optimizer, args)
             optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+            # 👇 Add this AFTER loading checkpoint['optimizer']
+            for state in optimizer.state.values():
+                for k, v in state.items():
+                    if isinstance(v, torch.Tensor):
+                        state[k] = v.to(args.device)
             scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
             start_epoch = checkpoint['epoch'] + 1
             debug(f"➡️  Resumed at epoch {start_epoch}")
