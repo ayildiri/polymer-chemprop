@@ -357,6 +357,9 @@ def run_training(args: TrainArgs,
                 save_checkpoint(os.path.join(save_dir, 'best_model.pt'), model, scaler, features_scaler,
                                 atom_descriptor_scaler, bond_feature_scaler, args)
 
+                # Save best_model.pt (for prediction use only)
+                torch.save(model.state_dict(), os.path.join(save_dir, 'best_model.pt'))
+
                 # ✅ ALSO save best full checkpoint for resume
                 torch.save({
                     'model_state_dict': model.state_dict(),
