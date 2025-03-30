@@ -74,7 +74,7 @@ class CommonArgs(Tap):
     """Path to model checkpoint (:code:`.pt` file)."""
     checkpoint_paths: List[str] = None
     """List of paths to model checkpoints (:code:`.pt` files)."""
-    frzn_encoder: bool = True
+    frzn_encoder: bool = False
     """Whether to freeze the encoder (MPN/message-passing layers) during fine-tuning."""
     no_cuda: bool = False
     """Turn off cuda (i.e., use CPU instead of GPU)."""
