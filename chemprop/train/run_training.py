@@ -234,7 +234,7 @@ def run_training(args: TrainArgs,
             encoder_layers[0].W_h.load_state_dict({
                 'weight': ssl_state_dict['W_message.weight']
             })
-
+            
             # 🔁 Optionally freeze the encoder layers
             if args.frzn_encoder:
                 for param in encoder_layers[0].W_i.parameters():
