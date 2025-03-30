@@ -235,10 +235,15 @@ def run_training(args: TrainArgs,
                 'weight': ssl_state_dict['W_message.weight']
             })
 
-            for param in encoder_layers[0].W_i.parameters():
-                param.requires_grad = False
-            for param in encoder_layers[0].W_h.parameters():
-                param.requires_grad = False
+            # 🔁 Optionally freeze the encoder layers
+            if args.frzn_encoder:
+                for param in encoder_layers[0].W_i.parameters():
+                    param.requires_grad = False
+                for param in encoder_layers[0].W_h.parameters():
+                    param.requires_grad = False
+                debug("🧊 Encoder frozen (W_i and W_h).")
+            else:
+                debug("🔥 Encoder NOT frozen (W_i and W_h will be trained).")
 
             if args.frzn_ffn_layers > 0:
                 debug(f'Transferring and freezing first {args.frzn_ffn_layers} FFN layers from SSL model.')
