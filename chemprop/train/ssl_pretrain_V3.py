@@ -541,7 +541,7 @@ def main():
 
         else:
             epochs_no_improve += 1
-            logging.info(f"No improvement. Patience counter: {epochs_no_improve}/{early_stop_patience}")
+            logging.info(f"🕰️ Early stopping patience counter: {epochs_no_improve}/{args.early_stop_patience}")
 
         # Early stopping
         if epochs_no_improve >= early_stop_patience:
