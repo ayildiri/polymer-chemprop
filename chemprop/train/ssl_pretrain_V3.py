@@ -314,7 +314,8 @@ def main():
     parser.add_argument('--graph_loss_weight', type=float, default=0.01, help='Weight applied to the graph-level loss (default: 0.01)')
     parser.add_argument('--pretrain_folds_file', type=str, default=None,help='Optional path to a pickle file defining pretrain splits')
     parser.add_argument('--epochs', type=int, default=10, help='Number of training epochs.')
-    parser.add_argument('--patience', type=int, default=5, help='Early stopping patience (epochs without val improvement).')
+    parser.add_argument('--early_stop_patience', type=int, default=40, help='Patience for early stopping.')
+    parser.add_argument('--scheduler_patience', type=int, default=10, help='Patience for LR scheduler.')
     parser.add_argument('--batch_size', type=int, default=32, help='Batch size for training.')
     parser.add_argument('--hidden_size', type=int, default=300, help='Hidden dimensionality for GNN.')
     parser.add_argument('--depth', type=int, default=3, help='Number of message passing steps.')
@@ -390,11 +391,11 @@ def main():
     total_params = sum(p.numel() for p in model.parameters())
     logging.info(f"🧠 Model has {total_params:,} parameters.")
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=args.patience, factor=0.5)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=args.scheduler_patience, factor=0.5)
     best_val_loss = float('inf')
     best_epoch = -1
     epochs_no_improve = 0
-    patience = args.patience # <-- You can make this configurable via argparse if needed
+    early_stop_patience = args.early_stop_patience # <-- You can make this configurable via argparse if needed
     
     for epoch in range(1, args.epochs+1):
         model.train()
@@ -540,11 +541,11 @@ def main():
 
         else:
             epochs_no_improve += 1
-            logging.info(f"No improvement. Patience counter: {epochs_no_improve}/{patience}")
+            logging.info(f"No improvement. Patience counter: {epochs_no_improve}/{early_stop_patience}")
 
         # Early stopping
-        if epochs_no_improve >= patience:
-            logging.info(f"⏹️ Early stopping triggered after {patience} epochs with no improvement.")
+        if epochs_no_improve >= early_stop_patience:
+            logging.info(f"⏹️ Early stopping triggered after {early_stop_patience} epochs with no improvement.")
             break
 
 
