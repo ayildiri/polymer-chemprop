@@ -513,7 +513,7 @@ def main():
         # Step the learning rate scheduler
         scheduler.step(avg_val_loss)
         current_lr = scheduler.optimizer.param_groups[0]['lr']
-        logging.info(f"📉 LR Scheduler | Current learning rate: {current_lr:.6e}")
+        logging.info(f"📉 LR Scheduler step complete (patience={args.scheduler_patience}) | LR now: {current_lr:.6e}")
 
         # Check for improvement
         if avg_val_loss < best_val_loss:
