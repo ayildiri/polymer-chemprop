@@ -445,7 +445,7 @@ def main():
             true_graph_vals = batch['mol_weights'].to(device)
             pred_graph_vals = pred_graph
             loss_graph = F.mse_loss(pred_graph_vals, true_graph_vals)
-            loss = loss_node + loss_edge + loss_graph
+            loss = loss_node + loss_edge + (loss_graph / 100)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
