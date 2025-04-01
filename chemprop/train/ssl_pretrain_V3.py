@@ -528,6 +528,15 @@ def main():
                 'best_val_loss': best_val_loss
             }, save_path)
             logging.info(f"✅ Saved best model to {save_path} (val_loss={best_val_loss:.4f}, epoch={best_epoch})")
+        
+        # 🔁 Append loss to CSV log
+        log_path = os.path.join(args.save_dir, 'ssl_loss_log.csv')
+        write_header = not os.path.exists(log_path)
+        with open(log_path, 'a') as f:
+            if write_header:
+                f.write('epoch,train_loss,val_loss,node_loss,edge_loss,graph_loss\n')
+            f.write(f'{epoch},{avg_train_loss},{avg_val_loss},{loss_node:.4f},{loss_edge:.4f},{loss_graph:.4f}\n')
+
         else:
             epochs_no_improve += 1
             logging.info(f"No improvement. Patience counter: {epochs_no_improve}/{patience}")
