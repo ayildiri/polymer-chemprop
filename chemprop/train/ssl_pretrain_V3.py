@@ -311,6 +311,7 @@ def main():
     parser.add_argument('--polymer', action='store_true', help='Use polymer-specific atom featurization.')
     parser.add_argument('--pretrain_frac', type=float, default=1.0, help='Fraction of dataset to use for pretraining.')
     parser.add_argument('--val_frac', type=float, default=0.1, help='Fraction of data to use for validation.')
+    parser.add_argument('--graph_loss_weight', type=float, default=0.01, help='Weight applied to the graph-level loss (default: 0.01)')
     parser.add_argument('--pretrain_folds_file', type=str, default=None,help='Optional path to a pickle file defining pretrain splits')
     parser.add_argument('--epochs', type=int, default=10, help='Number of training epochs.')
     parser.add_argument('--patience', type=int, default=5, help='Early stopping patience (epochs without val improvement).')
@@ -445,7 +446,7 @@ def main():
             true_graph_vals = batch['mol_weights'].to(device)
             pred_graph_vals = pred_graph
             loss_graph = F.mse_loss(pred_graph_vals, true_graph_vals)
-            loss = loss_node + loss_edge + (loss_graph / 100)
+            loss = loss_node + loss_edge + args.graph_loss_weight * loss_graph
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -501,7 +502,7 @@ def main():
                 true_graph_vals = batch['mol_weights'].to(device)
                 pred_graph_vals = pred_graph
                 loss_graph = F.mse_loss(pred_graph_vals, true_graph_vals)
-                loss = loss_node + loss_edge + (loss_graph / 100)
+                loss = loss_node + loss_edge + args.graph_loss_weight * loss_graph
                 val_losses.append(loss.item())
         avg_val_loss = float(np.mean(val_losses)) if val_losses else 0.0
         
