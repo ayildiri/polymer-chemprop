@@ -10,7 +10,7 @@ from chemprop.models import MoleculeModel
 def predict(model: MoleculeModel,
             data_loader: MoleculeDataLoader,
             disable_progress_bar: bool = False,
-            scaler: StandardScaler = None),
+            scaler: StandardScaler = None,
             return_embeddings: bool = False  # ✅ NEW
 ) -> Union[List[List[float]], Tuple[List[List[float]], np.ndarray]]:
     """
