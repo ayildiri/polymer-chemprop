@@ -1,5 +1,6 @@
 from argparse import Namespace
 from typing import Dict, Union
+import numpy as np
 from torch.serialization import safe_globals
 import csv
 from datetime import timedelta
