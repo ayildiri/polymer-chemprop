@@ -322,9 +322,15 @@ def load_args(path: str) -> TrainArgs:
     :param path: Path where model checkpoint is saved.
     :return: The :class:`~chemprop.args.TrainArgs` object that the model was trained with.
     """
-    args = TrainArgs()
-    args.from_dict(vars(torch.load(path, map_location=lambda storage, loc: storage)['args']), skip_unsettable=True)
+    import torch.serialization
+    from torch.serialization import safe_globals
+    from argparse import Namespace
 
+    with safe_globals([Namespace]):
+        loaded = torch.load(path, map_location=lambda storage, loc: storage, weights_only=False)
+
+    args = TrainArgs()
+    args.from_dict(vars(loaded['args']), skip_unsettable=True)
     return args
 
 
