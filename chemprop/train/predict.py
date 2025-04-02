@@ -11,6 +11,8 @@ def predict(model: MoleculeModel,
             data_loader: MoleculeDataLoader,
             disable_progress_bar: bool = False,
             scaler: StandardScaler = None) -> List[List[float]]:
+            return_embeddings: bool = False  # ✅ NEW
+            ) -> List[List[float]] or Tuple[List[List[float]], np.ndarray]:
     """
     Makes predictions on a dataset using an ensemble of models.
 
@@ -23,6 +25,7 @@ def predict(model: MoleculeModel,
     model.eval()
 
     preds = []
+    graph_embeddings = []  # ✅ NEW
 
     for batch in tqdm(data_loader, disable=disable_progress_bar, leave=False):
         # Prepare batch
@@ -32,8 +35,18 @@ def predict(model: MoleculeModel,
 
         # Make predictions
         with torch.no_grad():
-            batch_preds = model(mol_batch, features_batch, atom_descriptors_batch,
-                                atom_features_batch, bond_features_batch)
+            output = model(mol_batch, features_batch, atom_descriptors_batch,
+                           atom_features_batch, bond_features_batch)
+
+            # ✅ If model returns both predictions and graph embeddings
+            if return_embeddings:
+                if isinstance(output, tuple) and len(output) == 2:
+                    batch_preds, batch_embeds = output
+                    graph_embeddings.append(batch_embeds.cpu().numpy())
+                else:
+                    batch_preds = output  # fallback if embeddings aren't returned
+            else:
+                batch_preds = output
 
         batch_preds = batch_preds.data.cpu().numpy()
 
@@ -45,4 +58,9 @@ def predict(model: MoleculeModel,
         batch_preds = batch_preds.tolist()
         preds.extend(batch_preds)
 
-    return preds
+    if return_embeddings:
+        import numpy as np
+        graph_embeddings = np.concatenate(graph_embeddings, axis=0)
+        return preds, graph_embeddings
+    else:
+        return preds
