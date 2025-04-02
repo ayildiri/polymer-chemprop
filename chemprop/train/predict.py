@@ -12,7 +12,7 @@ def predict(model: MoleculeModel,
             disable_progress_bar: bool = False,
             scaler: StandardScaler = None) -> List[List[float]]:
             return_embeddings: bool = False  # ✅ NEW
-            ) -> Union[List[List[float]], Tuple[List[List[float]], np.ndarray]]:
+) -> Union[List[List[float]], Tuple[List[List[float]], np.ndarray]]:
     """
     Makes predictions on a dataset using an ensemble of models.
 
