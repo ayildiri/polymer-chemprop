@@ -311,6 +311,8 @@ def main():
     parser.add_argument('--polymer', action='store_true', help='Use polymer-specific atom featurization.')
     parser.add_argument('--pretrain_frac', type=float, default=1.0, help='Fraction of dataset to use for pretraining.')
     parser.add_argument('--val_frac', type=float, default=0.1, help='Fraction of data to use for validation.')
+    parser.add_argument('--mask_atoms', type=int, default=2, help='Number of atoms to mask per graph.')
+    parser.add_argument('--mask_edges', type=int, default=2, help='Number of edges to mask per graph.')
     parser.add_argument('--graph_loss_weight', type=float, default=0.01, help='Weight applied to the graph-level loss (default: 0.01)')
     parser.add_argument('--pretrain_folds_file', type=str, default=None,help='Optional path to a pickle file defining pretrain splits')
     parser.add_argument('--epochs', type=int, default=10, help='Number of training epochs.')
@@ -415,11 +417,11 @@ def main():
                 node_indices = torch.nonzero(node_to_graph == g_idx, as_tuple=True)[0]
                 edge_indices = torch.nonzero(node_to_graph[edge_src] == g_idx, as_tuple=True)[0]
                 if node_indices.numel() > 0:
-                    perm = torch.randperm(node_indices.numel())[:2]
+                    perm = torch.randperm(node_indices.numel())[:args.mask_atoms]
                     sel_nodes = node_indices[perm]
                     mask_atom_indices.extend(sel_nodes.tolist())
                 if edge_indices.numel() > 0:
-                    perm_e = torch.randperm(edge_indices.numel())[:2]
+                    perm_e = torch.randperm(edge_indices.numel())[:args.mask_edges]
                     sel_edges = edge_indices[perm_e]
                     for ei in sel_edges:
                         ei = int(ei.item())
@@ -471,11 +473,11 @@ def main():
                     node_indices = torch.nonzero(node_to_graph == g_idx, as_tuple=True)[0]
                     edge_indices = torch.nonzero(node_to_graph[edge_src] == g_idx, as_tuple=True)[0]
                     if node_indices.numel() > 0:
-                        perm = torch.randperm(node_indices.numel())[:2]
+                        perm = torch.randperm(node_indices.numel())[:args.mask_atoms]
                         sel_nodes = node_indices[perm]
                         mask_atom_indices.extend(sel_nodes.tolist())
                     if edge_indices.numel() > 0:
-                        perm_e = torch.randperm(edge_indices.numel())[:2]
+                        perm_e = torch.randperm(edge_indices.numel())[:args.mask_edges]
                         sel_edges = edge_indices[perm_e]
                         for ei in sel_edges:
                             ei = int(ei.item())
