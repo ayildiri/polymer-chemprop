@@ -150,11 +150,13 @@ class MoleculeModel(nn.Module):
             raise ValueError(f'Unsupported fingerprint type {fingerprint_type}.')
 
     def forward(self,
-                batch: Union[List[List[str]], List[List[Chem.Mol]], List[List[Tuple[Chem.Mol, Chem.Mol]]], List[BatchMolGraph]],
-                features_batch: List[np.ndarray] = None,
-                atom_descriptors_batch: List[np.ndarray] = None,
-                atom_features_batch: List[np.ndarray] = None,
-                bond_features_batch: List[np.ndarray] = None) -> torch.FloatTensor:
+            batch: Union[List[List[str]], List[List[Chem.Mol]], List[List[Tuple[Chem.Mol, Chem.Mol]]], List[BatchMolGraph]],
+            features_batch: List[np.ndarray] = None,
+            atom_descriptors_batch: List[np.ndarray] = None,
+            atom_features_batch: List[np.ndarray] = None,
+            bond_features_batch: List[np.ndarray] = None,
+            return_embeddings: bool = False) -> Union[torch.FloatTensor, Tuple[torch.FloatTensor, torch.FloatTensor]]:
+
         """
         Runs the :class:`MoleculeModel` on input.
 
@@ -169,15 +171,25 @@ class MoleculeModel(nn.Module):
         :return: The output of the :class:`MoleculeModel`, containing a list of property predictions
         """
 
-        output = self.ffn(self.encoder(batch, features_batch, atom_descriptors_batch,
-                                       atom_features_batch, bond_features_batch))
-
-        # Don't apply sigmoid during training b/c using BCEWithLogitsLoss
+        # Get graph-level embeddings from the encoder
+        graph_embeddings = self.encoder(batch, features_batch, atom_descriptors_batch,
+                                        atom_features_batch, bond_features_batch)
+        
+        # Pass embeddings through FFN
+        output = self.ffn(graph_embeddings)
+        
+        # Classification / multiclass post-processing
         if self.classification and not self.training:
             output = self.sigmoid(output)
+        
         if self.multiclass:
-            output = output.reshape((output.size(0), -1, self.num_classes))  # batch size x num targets x num classes per target
+            output = output.reshape((output.size(0), -1, self.num_classes))
             if not self.training:
-                output = self.multiclass_softmax(output)  # to get probabilities during evaluation, but not during training as we're using CrossEntropyLoss
+                output = self.multiclass_softmax(output)
+        
+        # Return embeddings if requested
+        if return_embeddings:
+            return output, graph_embeddings
+        else:
+            return output
 
-        return output
