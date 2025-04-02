@@ -655,6 +655,11 @@ class PredictArgs(CommonArgs):
     """Whether to calculate the variance of ensembles as a measure of epistemic uncertainty. If True, the variance is saved as an additional column for each target in the preds_path."""
     individual_ensemble_predictions: bool = False
     """Whether to return the predictions made by each of the individual models rather than the average of the ensemble"""
+    save_graph_embeddings: bool = False
+    """Whether to save graph-level embeddings during prediction."""
+    graph_embeddings_path: str = None
+    """Where to save the graph embeddings .npy file if --save_graph_embeddings is used."""
+
 
     @property
     def ensemble_size(self) -> int:
