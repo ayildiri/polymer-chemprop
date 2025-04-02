@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Tuple, Union, Optional
 
 import torch
 from tqdm import tqdm
@@ -12,7 +12,7 @@ def predict(model: MoleculeModel,
             disable_progress_bar: bool = False,
             scaler: StandardScaler = None) -> List[List[float]]:
             return_embeddings: bool = False  # ✅ NEW
-            ) -> List[List[float]] or Tuple[List[List[float]], np.ndarray]:
+            ) -> Union[List[List[float]], Tuple[List[List[float]], np.ndarray]]:
     """
     Makes predictions on a dataset using an ensemble of models.
 
