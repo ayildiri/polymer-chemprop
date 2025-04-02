@@ -337,6 +337,20 @@ def run_training(args: TrainArgs,
                     'epoch': epoch
                 }, os.path.join(save_dir, 'best_resume_checkpoint.pt'))
 
+                full_ckpt_path = os.path.join(save_dir, 'best_model_full.pt')
+                args_to_save = Namespace(**args.as_dict())  # 👈 safely convert args to namespace
+                
+                save_checkpoint(
+                    path=full_ckpt_path,
+                    model=model,
+                    scaler=scaler,
+                    features_scaler=features_scaler,
+                    atom_descriptor_scaler=atom_descriptor_scaler,
+                    bond_feature_scaler=bond_feature_scaler,
+                    args=args_to_save
+                )
+                debug(f"✅ Saved full checkpoint for predict.py to: {full_ckpt_path}")
+    
         info(f'Model {model_idx} best validation {args.metric} = {best_score:.6f} on epoch {best_epoch}')
         
         with safe_globals([Namespace, np.float64, np.ndarray]):
