@@ -1,7 +1,5 @@
 from argparse import Namespace
 from typing import Dict, Union
-import numpy as np
-from torch.serialization import safe_globals
 import csv
 from datetime import timedelta
 from functools import wraps
@@ -292,8 +290,7 @@ def load_scalers(path: str) -> Tuple[StandardScaler, StandardScaler, StandardSca
     :return: A tuple with the data :class:`~chemprop.data.scaler.StandardScaler`
              and features :class:`~chemprop.data.scaler.StandardScaler`.
     """
-    with safe_globals([Namespace, np.float64, np.ndarray]):
-        state = torch.load(path, map_location='cpu', weights_only=False)
+    state = torch.load(path, map_location=lambda storage, loc: storage)
 
     scaler = StandardScaler(state['data_scaler']['means'],
                             state['data_scaler']['stds']) if state['data_scaler'] is not None else None
@@ -325,15 +322,9 @@ def load_args(path: str) -> TrainArgs:
     :param path: Path where model checkpoint is saved.
     :return: The :class:`~chemprop.args.TrainArgs` object that the model was trained with.
     """
-    import torch.serialization
-    from torch.serialization import safe_globals
-    from argparse import Namespace
-
-    with safe_globals([Namespace]):
-        loaded = torch.load(path, map_location=lambda storage, loc: storage, weights_only=False)
-
     args = TrainArgs()
-    args.from_dict(vars(loaded['args']), skip_unsettable=True)
+    args.from_dict(vars(torch.load(path, map_location=lambda storage, loc: storage)['args']), skip_unsettable=True)
+
     return args
 
 
