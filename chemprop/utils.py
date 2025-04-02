@@ -292,7 +292,8 @@ def load_scalers(path: str) -> Tuple[StandardScaler, StandardScaler, StandardSca
     :return: A tuple with the data :class:`~chemprop.data.scaler.StandardScaler`
              and features :class:`~chemprop.data.scaler.StandardScaler`.
     """
-    state = torch.load(path, map_location=lambda storage, loc: storage)
+    with safe_globals([Namespace, np.float64, np.ndarray]):
+    state = torch.load(path, map_location='cpu', weights_only=False)
 
     scaler = StandardScaler(state['data_scaler']['means'],
                             state['data_scaler']['stds']) if state['data_scaler'] is not None else None
