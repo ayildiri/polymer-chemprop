@@ -63,7 +63,8 @@ def save_checkpoint(path: str,
     """
     # Convert args to namespace for backwards compatibility
     if args is not None:
-        args = Namespace(**args.as_dict())
+        if isinstance(args, TrainArgs):
+            args = Namespace(**args.as_dict())
 
     state = {
         'args': args,
