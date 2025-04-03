@@ -1,4 +1,3 @@
-from torch.serialization import safe_globals
 from argparse import Namespace
 import numpy as np
 from typing import Dict, Union
@@ -326,11 +325,8 @@ def load_args(path: str) -> TrainArgs:
     :return: The :class:`~chemprop.args.TrainArgs` object that the model was trained with.
     """
     
-    with safe_globals([Namespace, np.float64, np.ndarray]):
-        args_dict = torch.load(path, map_location=lambda storage, loc: storage)['args']
-
     args = TrainArgs()
-    args.from_dict(vars(args_dict), skip_unsettable=True)
+    args.from_dict(vars(torch.load(path, map_location=lambda storage, loc: storage)['args']), skip_unsettable=True)
     return args
 
 def load_task_names(path: str) -> List[str]:
