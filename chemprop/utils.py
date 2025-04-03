@@ -62,11 +62,7 @@ def save_checkpoint(path: str,
     :param args: The :class:`~chemprop.args.TrainArgs` object containing the arguments the model was trained with.
     :param path: Path where checkpoint will be saved.
     """
-    # Convert args to namespace for backwards compatibility
-    if args is not None:
-        if isinstance(args, TrainArgs):
-            args = Namespace(**args.as_dict())
-
+   
     state = {
         'args': args,
         'state_dict': model.state_dict(),
