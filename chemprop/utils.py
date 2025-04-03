@@ -64,7 +64,7 @@ def save_checkpoint(path: str,
     """
    
     state = {
-        'args': args,
+        'args': args.as_dict(),
         'state_dict': model.state_dict(),
         'data_scaler': {
             'means': scaler.means,
