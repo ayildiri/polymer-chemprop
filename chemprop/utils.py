@@ -1,4 +1,5 @@
 from argparse import Namespace
+from torch.serialization import safe_globals
 import numpy as np
 from typing import Dict, Union
 import csv
