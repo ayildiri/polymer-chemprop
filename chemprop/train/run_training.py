@@ -352,8 +352,7 @@ def run_training(args: TrainArgs,
     
         info(f'Model {model_idx} best validation {args.metric} = {best_score:.6f} on epoch {best_epoch}')
         
-        with safe_globals([Namespace, np.float64, np.ndarray]):
-            checkpoint = torch.load(os.path.join(save_dir, 'best_resume_checkpoint.pt'), map_location=args.device, weights_only=False)
+        checkpoint = torch.load(os.path.join(save_dir, 'best_resume_checkpoint.pt'), map_location=args.device)
         
         model.load_state_dict(checkpoint['model_state_dict'])
 
