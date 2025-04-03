@@ -1,5 +1,4 @@
 from argparse import Namespace
-from torch.serialization import safe_globals
 import numpy as np
 from typing import Dict, Union
 import csv
@@ -103,8 +102,8 @@ def load_checkpoint(path: str, device: torch.device = None, logger=None) -> Unio
         logger.debug(f"📦 Loading checkpoint from {path}")
 
     # ✅ Use safe unpickling with known trusted types (Namespace, np.float64, np.ndarray)
-    with safe_globals([Namespace, np.float64, np.ndarray]):
-        state = torch.load(path, map_location=device or 'cpu', weights_only=False)
+    
+    state = torch.load(path, map_location=device or 'cpu', weights_only=False)
 
     # Case 1: Model weights only (used for SSL or frozen loading)
     if isinstance(state, dict) and 'model_state_dict' not in state:
