@@ -11,6 +11,7 @@ import re
 from time import time
 from typing import Any, Callable, List, Tuple, Union
 import collections
+import numpy as np
 
 from sklearn.metrics import auc, mean_absolute_error, mean_squared_error, precision_recall_curve, r2_score,\
     roc_auc_score, accuracy_score, log_loss
