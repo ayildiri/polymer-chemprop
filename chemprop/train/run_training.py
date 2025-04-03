@@ -201,13 +201,8 @@ def run_training(args: TrainArgs,
         if args.resume_from_checkpoint is not None:
             debug(f'🔁 Resuming full training from checkpoint: {args.resume_from_checkpoint}')
             
-            # ✅ Safe unpickling with PyTorch 2.6+ (allow trusted types)
-            with safe_globals([Namespace, np.float64, np.ndarray]):
-                checkpoint = torch.load(
-                    args.resume_from_checkpoint,
-                    map_location=args.device,
-                    weights_only=False
-                )
+            checkpoint = torch.load(args.resume_from_checkpoint, map_location=args.device)
+    
             model.load_state_dict(checkpoint['model_state_dict'])
             optimizer = build_optimizer(model, args)
             scheduler = build_lr_scheduler(optimizer, args)
