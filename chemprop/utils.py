@@ -323,9 +323,16 @@ def load_args(path: str) -> TrainArgs:
     :param path: Path where model checkpoint is saved.
     :return: The :class:`~chemprop.args.TrainArgs` object that the model was trained with.
     """
-    args = TrainArgs()
-    args.from_dict(vars(torch.load(path, map_location=lambda storage, loc: storage)['args']), skip_unsettable=True)
+    loaded = torch.load(path, map_location=lambda storage, loc: storage)
 
+    args = TrainArgs()
+    if isinstance(loaded['args'], Namespace):
+        args.from_dict(vars(loaded['args']), skip_unsettable=True)
+    elif isinstance(loaded['args'], dict):
+        args.from_dict(loaded['args'], skip_unsettable=True)
+    else:
+        raise ValueError("Unsupported format for 'args' in checkpoint.")
+    
     return args
 
 
