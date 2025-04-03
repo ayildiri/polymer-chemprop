@@ -11,7 +11,6 @@ import re
 from time import time
 from typing import Any, Callable, List, Tuple, Union
 import collections
-import numpy as np
 
 from sklearn.metrics import auc, mean_absolute_error, mean_squared_error, precision_recall_curve, r2_score,\
     roc_auc_score, accuracy_score, log_loss
@@ -324,16 +323,9 @@ def load_args(path: str) -> TrainArgs:
     :param path: Path where model checkpoint is saved.
     :return: The :class:`~chemprop.args.TrainArgs` object that the model was trained with.
     """
-    loaded = torch.load(path, map_location=lambda storage, loc: storage)
-
     args = TrainArgs()
-    if isinstance(loaded['args'], Namespace):
-        args.from_dict(vars(loaded['args']), skip_unsettable=True)
-    elif isinstance(loaded['args'], dict):
-        args.from_dict(loaded['args'], skip_unsettable=True)
-    else:
-        raise ValueError("Unsupported format for 'args' in checkpoint.")
-    
+    args.from_dict(vars(torch.load(path, map_location=lambda storage, loc: storage)['args']), skip_unsettable=True)
+
     return args
 
 
