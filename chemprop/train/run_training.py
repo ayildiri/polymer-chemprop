@@ -2,7 +2,6 @@ import json
 from logging import Logger
 import os
 from typing import Dict, List, Union
-from torch.serialization import safe_globals
 from argparse import Namespace
 import numpy as np
 import pandas as pd
@@ -22,6 +21,7 @@ from chemprop.models import MoleculeModel
 from chemprop.nn_utils import param_count, param_count_all
 from chemprop.utils import build_optimizer, build_lr_scheduler, get_loss_func, load_checkpoint, makedirs, \
     save_checkpoint, save_smiles_splits, load_frzn_model
+
 
 def run_training(args: TrainArgs,
                  data: MoleculeDataset,
@@ -50,7 +50,7 @@ def run_training(args: TrainArgs,
                             atom_descriptors_path=args.separate_val_atom_descriptors_path,
                             bond_features_path=args.separate_val_bond_features_path,
                             phase_features_path=args.separate_val_phase_features_path,
-                            smiles_columns = args.smiles_columns,
+                            smiles_columns=args.smiles_columns,
                             logger=logger)
 
     if args.separate_val_path and args.separate_test_path:
@@ -201,19 +201,15 @@ def run_training(args: TrainArgs,
 
         if args.resume_from_checkpoint is not None:
             debug(f'🔁 Resuming full training from checkpoint: {args.resume_from_checkpoint}')
-            
-            # ✅ Safe unpickling with PyTorch 2.6+ (allow trusted types)
-            with safe_globals([Namespace, np.float64, np.ndarray]):
-                checkpoint = torch.load(
-                    args.resume_from_checkpoint,
-                    map_location=args.device,
-                    weights_only=False
-                )
+            checkpoint = torch.load(
+                args.resume_from_checkpoint,
+                map_location=args.device,
+                weights_only=False
+            )
             model.load_state_dict(checkpoint['model_state_dict'])
             optimizer = build_optimizer(model, args)
             scheduler = build_lr_scheduler(optimizer, args)
             optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-            # 👇 Add this AFTER loading checkpoint['optimizer']
             for state in optimizer.state.values():
                 for k, v in state.items():
                     if isinstance(v, torch.Tensor):
@@ -222,44 +218,6 @@ def run_training(args: TrainArgs,
             start_epoch = checkpoint['epoch'] + 1
             debug(f"➡️  Resumed at epoch {start_epoch}")
 
-        elif args.checkpoint_frzn is not None:
-            debug(f'❄️Loading and freezing parameters from {args.checkpoint_frzn}.')
-            ssl_checkpoint = torch.load(args.checkpoint_frzn, map_location='cpu')
-            ssl_state_dict = ssl_checkpoint['state_dict']
-
-            encoder_layers = model.encoder.encoder
-            encoder_layers[0].W_i.load_state_dict({
-                'weight': ssl_state_dict['W_initial.weight']
-            })
-            encoder_layers[0].W_h.load_state_dict({
-                'weight': ssl_state_dict['W_message.weight']
-            })
-            
-            # 🔁 Optionally freeze the encoder layers
-            if args.frzn_encoder:
-                for param in encoder_layers[0].W_i.parameters():
-                    param.requires_grad = False
-                for param in encoder_layers[0].W_h.parameters():
-                    param.requires_grad = False
-                debug("🧊 Encoder frozen (W_i and W_h).")
-            else:
-                debug("🔥 Encoder NOT frozen (W_i and W_h will be trained).")
-
-            if args.frzn_ffn_layers > 0:
-                debug(f'Transferring and freezing first {args.frzn_ffn_layers} FFN layers from SSL model.')
-                ffn_state_dict = model.ffn.state_dict()
-                for i in range(args.frzn_ffn_layers):
-                    ffn_state_dict[f'{2*i}.weight'] = ssl_state_dict[f'graph_head.{2*i}.weight']
-                    ffn_state_dict[f'{2*i}.bias'] = ssl_state_dict[f'graph_head.{2*i}.bias']
-                model.ffn.load_state_dict(ffn_state_dict)
-                for i in range(args.frzn_ffn_layers):
-                    model.ffn[2*i].weight.requires_grad = False
-                    model.ffn[2*i].bias.requires_grad = False
-
-            debug(f"✅ First {args.frzn_ffn_layers} FFN layers frozen.")
-
-            optimizer = build_optimizer(model, args)
-            scheduler = build_lr_scheduler(optimizer, args)
         else:
             debug(f'🛠️ Building model {model_idx} from scratch.')
             model = MoleculeModel(args)
@@ -267,12 +225,7 @@ def run_training(args: TrainArgs,
             scheduler = build_lr_scheduler(optimizer, args)
 
         debug(model)
-
-        if args.checkpoint_frzn is not None:
-            debug(f'Number of unfrozen parameters = {param_count(model):,}')
-            debug(f'Total number of parameters = {param_count_all(model):,}')
-        else:
-            debug(f'Number of parameters = {param_count_all(model):,}')
+        debug(f'Number of parameters = {param_count_all(model):,}')
 
         if args.cuda:
             debug('Moving model to cuda')
@@ -338,8 +291,7 @@ def run_training(args: TrainArgs,
                 }, os.path.join(save_dir, 'best_resume_checkpoint.pt'))
 
                 full_ckpt_path = os.path.join(save_dir, 'best_model_full.pt')
-                args_to_save = args
-                
+                args_to_save = TrainArgs().from_dict(vars(args))
                 save_checkpoint(
                     path=full_ckpt_path,
                     model=model,
@@ -350,12 +302,10 @@ def run_training(args: TrainArgs,
                     args=args_to_save
                 )
                 debug(f"✅ Saved full checkpoint for predict.py to: {full_ckpt_path}")
-    
+
         info(f'Model {model_idx} best validation {args.metric} = {best_score:.6f} on epoch {best_epoch}')
-        
-        with safe_globals([Namespace, np.float64, np.ndarray]):
-            checkpoint = torch.load(os.path.join(save_dir, 'best_resume_checkpoint.pt'), map_location=args.device, weights_only=False)
-        
+
+        checkpoint = torch.load(os.path.join(save_dir, 'best_resume_checkpoint.pt'), map_location=args.device, weights_only=False)
         model.load_state_dict(checkpoint['model_state_dict'])
 
         test_preds = predict(
