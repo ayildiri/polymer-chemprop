@@ -291,7 +291,9 @@ def run_training(args: TrainArgs,
                 }, os.path.join(save_dir, 'best_resume_checkpoint.pt'))
 
                 full_ckpt_path = os.path.join(save_dir, 'best_model_full.pt')
-                args_to_save = TrainArgs().from_dict(vars(args))
+                args_to_save = TrainArgs()
+                args_to_save.from_dict(vars(args))
+                print(f"[DEBUG] args_to_save type = {type(args_to_save)}")        
                 save_checkpoint(
                     path=full_ckpt_path,
                     model=model,
