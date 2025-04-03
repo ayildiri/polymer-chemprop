@@ -2,6 +2,7 @@ import json
 from logging import Logger
 import os
 from typing import Dict, List, Union
+from torch.serialization import safe_globals
 from argparse import Namespace
 import numpy as np
 import pandas as pd
@@ -201,8 +202,13 @@ def run_training(args: TrainArgs,
         if args.resume_from_checkpoint is not None:
             debug(f'🔁 Resuming full training from checkpoint: {args.resume_from_checkpoint}')
             
-            checkpoint = torch.load(args.resume_from_checkpoint, map_location=args.device)
-    
+            # ✅ Safe unpickling with PyTorch 2.6+ (allow trusted types)
+            with safe_globals([Namespace, np.float64, np.ndarray]):
+                checkpoint = torch.load(
+                    args.resume_from_checkpoint,
+                    map_location=args.device,
+                    weights_only=False
+                )
             model.load_state_dict(checkpoint['model_state_dict'])
             optimizer = build_optimizer(model, args)
             scheduler = build_lr_scheduler(optimizer, args)
@@ -332,7 +338,7 @@ def run_training(args: TrainArgs,
                 }, os.path.join(save_dir, 'best_resume_checkpoint.pt'))
 
                 full_ckpt_path = os.path.join(save_dir, 'best_model_full.pt')
-                args_to_save = TrainArgs().from_dict(vars(args)) if isinstance(args, Namespace) else args
+                args_to_save = args
                 
                 save_checkpoint(
                     path=full_ckpt_path,
@@ -347,7 +353,8 @@ def run_training(args: TrainArgs,
     
         info(f'Model {model_idx} best validation {args.metric} = {best_score:.6f} on epoch {best_epoch}')
         
-        checkpoint = torch.load(os.path.join(save_dir, 'best_resume_checkpoint.pt'), map_location=args.device)
+        with safe_globals([Namespace, np.float64, np.ndarray]):
+            checkpoint = torch.load(os.path.join(save_dir, 'best_resume_checkpoint.pt'), map_location=args.device, weights_only=False)
         
         model.load_state_dict(checkpoint['model_state_dict'])
 
