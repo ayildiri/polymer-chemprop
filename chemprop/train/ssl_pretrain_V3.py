@@ -546,7 +546,7 @@ def main():
                 logging.info(f"📦 Saved best graph embeddings to {emb_path}")
             
                 # 📝 Save SMILES/weights if available
-                if all_val_smiles and len(all_val_smiles) == len(all_val_weights):
+                if len(all_val_smiles) == len(all_val_weights):
                     smiles_and_weights = pd.DataFrame({
                         'poly_chemprop_input': all_val_smiles,
                         'mol_weights': all_val_weights
