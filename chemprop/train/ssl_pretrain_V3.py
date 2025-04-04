@@ -573,7 +573,11 @@ def main():
                 epochs_no_improve += 1
                 lr_no_improve_epochs += 1
                 logging.info(f"🕰️ Early stopping patience counter: {epochs_no_improve}/{args.early_stop_patience}")
-            
+
+            # 🧾 Epoch summary (MOVE UP here)
+            logging.info(f"Epoch {epoch}/{args.epochs} | Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f} | "
+                         f"(node: {loss_node:.4f}, edge: {loss_edge:.4f}, graph: {loss_graph:.4f})")
+
             # 🔁 Step LR scheduler (AFTER updating best_val_loss)
             old_lr = scheduler.optimizer.param_groups[0]['lr']
             scheduler.step(avg_val_loss)
@@ -584,10 +588,6 @@ def main():
                 lr_no_improve_epochs = 0
             else:
                 logging.info(f"⏸️ LR unchanged at {new_lr:.6e} (LR patience: {lr_no_improve_epochs}/{args.scheduler_patience})")
-            
-            # 🧾 Epoch Summary
-            logging.info(f"Epoch {epoch}/{args.epochs} | Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f} | "
-                         f"(node: {loss_node:.4f}, edge: {loss_edge:.4f}, graph: {loss_graph:.4f})")
             
             # ⏹️ Early stopping
             if epochs_no_improve >= early_stop_patience:
