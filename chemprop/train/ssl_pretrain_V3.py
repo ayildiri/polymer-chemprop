@@ -582,7 +582,7 @@ def main():
         # ⏹️ Early stopping check
         if epochs_no_improve >= early_stop_patience:
             logging.info(f"⏹️ Early stopping triggered after {early_stop_patience} epochs with no improvement.")
-    break
+            break
 
 
 if __name__ == "__main__":
