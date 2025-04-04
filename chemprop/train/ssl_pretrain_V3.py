@@ -570,10 +570,17 @@ def main():
             logging.info(f"🕰️ Early stopping patience counter: {epochs_no_improve}/{args.early_stop_patience}")
             logging.info(f"📉 LR Scheduler step (no val loss improvement)")
         
-        # 📉 Step learning rate scheduler (every epoch)
+        
+        # Step the learning rate scheduler
+        old_lr = scheduler.optimizer.param_groups[0]['lr']
         scheduler.step(avg_val_loss)
-        current_lr = scheduler.optimizer.param_groups[0]['lr']
-        logging.info(f"📉 LR Scheduler step complete (patience={args.scheduler_patience}) | LR now: {current_lr:.6e}")
+        new_lr = scheduler.optimizer.param_groups[0]['lr']
+        
+        if new_lr < old_lr:
+            logging.info(f"🔻 LR reduced from {old_lr:.6e} → {new_lr:.6e} due to plateau in val loss.")
+        else:
+            logging.info(f"⏸️ LR unchanged at {new_lr:.6e} (no val loss improvement yet, patience={args.scheduler_patience})")
+
         
         # 🧾 Epoch summary
         logging.info(f"Epoch {epoch}/{args.epochs} | Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f} | "
