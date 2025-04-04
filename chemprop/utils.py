@@ -89,14 +89,9 @@ def save_checkpoint(path: str,
 import torch.serialization
 from chemprop.args import TrainArgs  # ✅ needed for loading args safely
 
-def load_checkpoint(path: str, device: torch.device = None, logger=None) -> Union[torch.nn.Module, Dict]:
+def load_checkpoint(path: str, device: torch.device = None, logger=None) -> Union[Dict, torch.nn.Module]:
     """
     Loads a model checkpoint. Supports both full and partial checkpoints.
-
-    :param path: Path to the checkpoint file.
-    :param device: Device to map the checkpoint to.
-    :param logger: Optional logger.
-    :return: A full checkpoint dict or just a state_dict, depending on checkpoint content.
     """
     if logger:
         logger.debug(f"📦 Loading checkpoint from {path}")
@@ -108,14 +103,15 @@ def load_checkpoint(path: str, device: torch.device = None, logger=None) -> Unio
 
     # ✅ Case 1: Model weights only (used for SSL or frozen loading)
     if isinstance(state, dict) and 'model_state_dict' not in state and 'state_dict' in state:
-        return state  # just weights
+        return state  # Just the weights
 
-    # ✅ Case 2: Full training checkpoint (used for resume training or fine-tuning)
-    elif 'model_state_dict' in state or 'state_dict' in state:
+    # ✅ Case 2: Full training checkpoint
+    if isinstance(state, dict) and ('state_dict' in state or 'model_state_dict' in state):
         return state
 
-    else:
-        raise ValueError(f"❌ Checkpoint at {path} is not a valid Chemprop checkpoint.")
+    # ❌ Invalid checkpoint
+    raise ValueError(f"❌ Checkpoint at {path} is not a valid Chemprop checkpoint.")
+
 
 
     # Load model and args
