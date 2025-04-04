@@ -531,68 +531,72 @@ def main():
         
             os.makedirs(args.save_dir, exist_ok=True)
         
-            # 📦 Save best graph embeddings (overwrite)
-            emb_path = os.path.join(args.save_dir, "best_val_graph_embeddings.npy")
-            np.save(emb_path, torch.cat(val_graph_embeddings, dim=0).numpy())
-            logging.info(f"📦 Saved best graph embeddings to {emb_path}")
-        
-            # 📝 Save SMILES and weights for best val set (if available)
-            if 'smiles' in batch:
-                val_smiles = batch['smiles']
-                val_mol_weights = batch['mol_weights'].cpu().numpy()
-                smiles_and_weights = pd.DataFrame({
-                    'poly_chemprop_input': val_smiles,
-                    'mol_weights': val_mol_weights
-                })
-                val_csv_path = os.path.join(args.save_dir, 'val_smiles_and_weights.csv')
-                smiles_and_weights.to_csv(val_csv_path, index=False)
-                logging.info(f"📝 Saved val SMILES and weights to {val_csv_path}")
-        
-            # 💾 Save model
-            model_path = os.path.join(args.save_dir, "model.pt")
-            torch.save({
-                'state_dict': model.state_dict(),
-                'args': vars(args),
-                'best_epoch': best_epoch,
-                'best_val_loss': best_val_loss
-            }, model_path)
-            logging.info(f"✅ Saved best model to {model_path} (val_loss={best_val_loss:.4f}, epoch={best_epoch})")
-        
-            # 📊 Log loss to CSV
-            log_path = os.path.join(args.save_dir, 'ssl_loss_log.csv')
-            write_header = not os.path.exists(log_path)
-            with open(log_path, 'a') as f:
-                if write_header:
-                    f.write('epoch,train_loss,val_loss,node_loss,edge_loss,graph_loss\n')
-                f.write(f'{epoch},{avg_train_loss},{avg_val_loss},{loss_node:.4f},{loss_edge:.4f},{loss_graph:.4f}\n')
-        
-        else:
-            epochs_no_improve += 1
-            logging.info(f"🕰️ Early stopping patience counter: {epochs_no_improve}/{args.early_stop_patience}")
-        
-        
-        
-        # Step the learning rate scheduler
-        old_lr = scheduler.optimizer.param_groups[0]['lr']
-        scheduler.step(avg_val_loss)
-        new_lr = scheduler.optimizer.param_groups[0]['lr']
-        
-        if new_lr < old_lr:
-            logging.info(f"🔻 LR reduced from {old_lr:.6e} → {new_lr:.6e} due to plateau in val loss.")
-            lr_no_improve_epochs = 0  # Reset patience counter
-        else:
-            lr_no_improve_epochs += 1
-            logging.info(f"⏸️ LR unchanged at {new_lr:.6e} (no val loss improvement yet, LR patience: {lr_no_improve_epochs}/{args.scheduler_patience})")
+            # Step the learning rate scheduler BEFORE updating best_val_loss
+            old_lr = scheduler.optimizer.param_groups[0]['lr']
+            scheduler.step(avg_val_loss)
+            new_lr = scheduler.optimizer.param_groups[0]['lr']
+            
+            if new_lr < old_lr:
+                logging.info(f"🔻 LR reduced from {old_lr:.6e} → {new_lr:.6e} due to plateau in val loss.")
+                lr_no_improve_epochs = 0  # Reset LR patience
+            else:
+                lr_no_improve_epochs += 1
+                logging.info(f"⏸️ LR unchanged at {new_lr:.6e} (no val loss improvement yet, LR patience: {lr_no_improve_epochs}/{args.scheduler_patience})")
+            
+            # Check for improvement and save best model AFTER scheduler step
+            if avg_val_loss < best_val_loss:
+                best_val_loss = avg_val_loss
+                best_epoch = epoch
+                epochs_no_improve = 0
+            
+                # 📦 Save best graph embeddings (overwrite)
+                emb_path = os.path.join(args.save_dir, "best_val_graph_embeddings.npy")
+                np.save(emb_path, torch.cat(val_graph_embeddings, dim=0).numpy())
+                logging.info(f"📦 Saved best graph embeddings to {emb_path}")
+            
+                # 📝 Save SMILES and weights for best val set (if available)
+                if 'smiles' in batch:
+                    val_smiles = batch['smiles']
+                    val_mol_weights = batch['mol_weights'].cpu().numpy()
+                    smiles_and_weights = pd.DataFrame({
+                        'poly_chemprop_input': val_smiles,
+                        'mol_weights': val_mol_weights
+                    })
+                    val_csv_path = os.path.join(args.save_dir, 'val_smiles_and_weights.csv')
+                    smiles_and_weights.to_csv(val_csv_path, index=False)
+                    logging.info(f"📝 Saved val SMILES and weights to {val_csv_path}")
+            
+                # 💾 Save model
+                model_path = os.path.join(args.save_dir, "model.pt")
+                torch.save({
+                    'state_dict': model.state_dict(),
+                    'args': vars(args),
+                    'best_epoch': best_epoch,
+                    'best_val_loss': best_val_loss
+                }, model_path)
+                logging.info(f"✅ Saved best model to {model_path} (val_loss={best_val_loss:.4f}, epoch={best_epoch})")
+            
+                # 📊 Log loss to CSV
+                log_path = os.path.join(args.save_dir, 'ssl_loss_log.csv')
+                write_header = not os.path.exists(log_path)
+                with open(log_path, 'a') as f:
+                    if write_header:
+                        f.write('epoch,train_loss,val_loss,node_loss,edge_loss,graph_loss\n')
+                    f.write(f'{epoch},{avg_train_loss},{avg_val_loss},{loss_node:.4f},{loss_edge:.4f},{loss_graph:.4f}\n')
+            
+            else:
+                epochs_no_improve += 1
+                logging.info(f"🕰️ Early stopping patience counter: {epochs_no_improve}/{args.early_stop_patience}")
+            
+            # 🧾 Epoch summary
+            logging.info(f"Epoch {epoch}/{args.epochs} | Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f} | "
+                         f"(node: {loss_node:.4f}, edge: {loss_edge:.4f}, graph: {loss_graph:.4f})")
+            
+            # ⏹️ Early stopping check
+            if epochs_no_improve >= early_stop_patience:
+                logging.info(f"⏹️ Early stopping triggered after {early_stop_patience} epochs with no improvement.")
+                break
 
-        
-        # 🧾 Epoch summary
-        logging.info(f"Epoch {epoch}/{args.epochs} | Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f} | "
-                     f"(node: {loss_node:.4f}, edge: {loss_edge:.4f}, graph: {loss_graph:.4f})")
-        
-        # ⏹️ Early stopping check
-        if epochs_no_improve >= early_stop_patience:
-            logging.info(f"⏹️ Early stopping triggered after {early_stop_patience} epochs with no improvement.")
-            break
 
 
 if __name__ == "__main__":
