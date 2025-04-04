@@ -594,9 +594,6 @@ def main():
                 logging.info(f"⏹️ Early stopping triggered after {early_stop_patience} epochs with no improvement.")
                 break
 
-
-
-
 if __name__ == "__main__":
     if Chem is None:
         logging.error("RDKit is not installed. Please install RDKit to run this script.")
