@@ -560,7 +560,6 @@ def main():
                 else:
                     logging.warning("⚠️ Number of SMILES does not match number of embeddings. Skipping CSV save.")
 
-
                 # 📝 Save SMILES/weights if available
                 if len(all_val_smiles) == len(all_val_weights):
                     smiles_and_weights = pd.DataFrame({
