@@ -460,7 +460,7 @@ def main():
         model.eval()
         val_losses = []
         all_graph_embeddings = []  # To store graph-level embeddings
-        
+        val_graph_embeddings = []  # ✅ Add this line for best-epoch saving
         with torch.no_grad():
             for batch in val_loader:
                 atom_feats = batch['atom_feats'].to(device)
