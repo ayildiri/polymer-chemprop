@@ -52,38 +52,26 @@ def save_checkpoint(path: str,
                     bond_feature_scaler: StandardScaler = None,
                     args: TrainArgs = None) -> None:
     """
-    Saves a model checkpoint.
-
-    :param model: A :class:`~chemprop.models.model.MoleculeModel`.
-    :param scaler: A :class:`~chemprop.data.scaler.StandardScaler` fitted on the data.
-    :param features_scaler: A :class:`~chemprop.data.scaler.StandardScaler` fitted on the features.
-    :param atom_descriptor_scaler: A :class:`~chemprop.data.scaler.StandardScaler` fitted on the atom descriptors.
-    :param bond_feature_scaler: A :class:`~chemprop.data.scaler.StandardScaler` fitted on the bond_fetaures.
-    :param args: The :class:`~chemprop.args.TrainArgs` object containing the arguments the model was trained with.
-    :param path: Path where checkpoint will be saved.
+    Saves a model checkpoint in a clean Chemprop-compatible format.
     """
-   
+
+    def scaler_to_dict(scaler_obj):
+        return {
+            'means': scaler_obj.means.tolist() if isinstance(scaler_obj.means, np.ndarray) else scaler_obj.means,
+            'stds': scaler_obj.stds.tolist() if isinstance(scaler_obj.stds, np.ndarray) else scaler_obj.stds,
+        } if scaler_obj is not None else None
+
     state = {
-        'args': args.as_dict(),
+        'args': args.as_dict(),  # ✅ Store args as dict
         'state_dict': model.state_dict(),
-        'data_scaler': {
-            'means': scaler.means,
-            'stds': scaler.stds
-        } if scaler is not None else None,
-        'features_scaler': {
-            'means': features_scaler.means,
-            'stds': features_scaler.stds
-        } if features_scaler is not None else None,
-        'atom_descriptor_scaler': {
-            'means': atom_descriptor_scaler.means,
-            'stds': atom_descriptor_scaler.stds
-        } if atom_descriptor_scaler is not None else None,
-        'bond_feature_scaler': {
-            'means': bond_feature_scaler.means,
-            'stds': bond_feature_scaler.stds
-        } if bond_feature_scaler is not None else None
+        'data_scaler': scaler_to_dict(scaler),
+        'features_scaler': scaler_to_dict(features_scaler),
+        'atom_descriptor_scaler': scaler_to_dict(atom_descriptor_scaler),
+        'bond_feature_scaler': scaler_to_dict(bond_feature_scaler)
     }
+
     torch.save(state, path)
+
 
 
 import torch.serialization
