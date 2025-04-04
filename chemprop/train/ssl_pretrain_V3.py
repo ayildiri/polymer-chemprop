@@ -520,7 +520,7 @@ def main():
                 val_losses.append(loss.item())
                 val_graph_embeddings.append(pred_graph_vals.cpu())
                 
-        avg_val_loss = float(np.mean(val_losses)) if val_losses else 0.0
+                avg_val_loss = float(np.mean(val_losses)) if val_losses else 0.0
 
         # Check for improvement
         if avg_val_loss < best_val_loss:
