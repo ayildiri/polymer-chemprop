@@ -544,7 +544,23 @@ def main():
                 emb_path = os.path.join(args.save_dir, "best_val_graph_embeddings.npy")
                 np.save(emb_path, torch.cat(val_graph_embeddings, dim=0).numpy())
                 logging.info(f"📦 Saved best graph embeddings to {emb_path}")
-            
+
+
+                # 📊 Save graph embeddings with SMILES to CSV
+                if len(all_val_smiles) == len(val_graph_embeddings):
+                    embed_dim = graph_embeds_tensor.size(1)
+                    embed_np = graph_embeds_tensor.numpy()
+                
+                    embed_df = pd.DataFrame(embed_np, columns=[f'embedding_{i}' for i in range(embed_dim)])
+                    embed_df.insert(0, 'poly_chemprop_input', all_val_smiles)
+                
+                    embed_csv_path = os.path.join(args.save_dir, 'graph_embeddings_with_smiles.csv')
+                    embed_df.to_csv(embed_csv_path, index=False)
+                    logging.info(f"📎 Saved graph embeddings + SMILES to {embed_csv_path}")
+                else:
+                    logging.warning("⚠️ Number of SMILES does not match number of embeddings. Skipping CSV save.")
+
+
                 # 📝 Save SMILES/weights if available
                 if len(all_val_smiles) == len(all_val_weights):
                     smiles_and_weights = pd.DataFrame({
