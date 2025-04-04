@@ -399,6 +399,7 @@ def main():
     best_val_loss = float('inf')
     best_epoch = -1
     epochs_no_improve = 0
+    lr_no_improve_epochs = 0
     early_stop_patience = args.early_stop_patience # <-- You can make this configurable via argparse if needed
     
     for epoch in range(1, args.epochs+1):
@@ -568,7 +569,7 @@ def main():
         else:
             epochs_no_improve += 1
             logging.info(f"🕰️ Early stopping patience counter: {epochs_no_improve}/{args.early_stop_patience}")
-            logging.info(f"📉 LR Scheduler step (no val loss improvement)")
+        
         
         
         # Step the learning rate scheduler
@@ -578,8 +579,10 @@ def main():
         
         if new_lr < old_lr:
             logging.info(f"🔻 LR reduced from {old_lr:.6e} → {new_lr:.6e} due to plateau in val loss.")
+            lr_no_improve_epochs = 0  # Reset patience counter
         else:
-            logging.info(f"⏸️ LR unchanged at {new_lr:.6e} (no val loss improvement yet, patience={args.scheduler_patience})")
+            lr_no_improve_epochs += 1
+            logging.info(f"⏸️ LR unchanged at {new_lr:.6e} (no val loss improvement yet, LR patience: {lr_no_improve_epochs}/{args.scheduler_patience})")
 
         
         # 🧾 Epoch summary
