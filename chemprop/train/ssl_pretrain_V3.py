@@ -405,6 +405,7 @@ def main():
     for epoch in range(1, args.epochs+1):
         model.train()
         train_losses = []
+        logging.info("")  # Adds a blank line between epochs
         logging.info(f"🚀 Starting epoch {epoch}")
         for batch in train_loader:
             atom_feats = batch['atom_feats'].to(device)
