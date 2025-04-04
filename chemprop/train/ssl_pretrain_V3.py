@@ -528,6 +528,18 @@ def main():
             save_path = os.path.join(args.save_dir, f"best_val_graph_embeddings_epoch{epoch}.npy")
             np.save(save_path, torch.cat(val_graph_embeddings, dim=0).numpy())
             logging.info(f"📦 Saved best graph embeddings to {save_path}")
+
+            # ✅ Save SMILES and weights if this is best epoch
+            if 'smiles' in batch:
+                val_smiles = batch['smiles']
+                val_mol_weights = batch['mol_weights'].cpu().numpy()
+                smiles_and_weights = pd.DataFrame({
+                    'poly_chemprop_input': val_smiles,
+                    'mol_weights': val_mol_weights
+                })
+                val_csv_path = os.path.join(args.save_dir, 'val_smiles_and_weights.csv')
+                smiles_and_weights.to_csv(val_csv_path, index=False)
+                logging.info(f"📝 Saved val SMILES and weights to {val_csv_path}")
         
         logging.info(f"Epoch {epoch}/{args.epochs} | Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f} | "
                      f"(node: {loss_node:.4f}, edge: {loss_edge:.4f}, graph: {loss_graph:.4f})")
