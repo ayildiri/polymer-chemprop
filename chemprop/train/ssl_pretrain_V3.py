@@ -459,6 +459,8 @@ def main():
         avg_train_loss = float(np.mean(train_losses)) if train_losses else 0.0
         model.eval()
         val_losses = []
+        all_graph_embeddings = []  # To store graph-level embeddings
+        
         with torch.no_grad():
             for batch in val_loader:
                 atom_feats = batch['atom_feats'].to(device)
@@ -493,7 +495,12 @@ def main():
                     atom_feats[mask_atom_indices] = 0.0
                 if mask_edge_indices:
                     edge_feats[mask_edge_indices] = 0.0
+                    
                 pred_node, pred_edge, pred_graph = model(atom_feats, edge_src, edge_dst, edge_feats, edge_weights, b2rev, node_to_graph)
+                
+                # Save graph embeddings
+                all_graph_embeddings.append(pred_graph.cpu())  # Detach and store on CPU
+                
                 loss_node = 0.0
                 loss_edge = 0.0
                 if mask_atom_indices:
@@ -504,12 +511,23 @@ def main():
                     true_edge_feats = batch['edge_feats'].to(device)[mask_edge_indices]
                     pred_edge_feats = pred_edge[mask_edge_indices]
                     loss_edge = F.mse_loss(pred_edge_feats, true_edge_feats)
+                
                 true_graph_vals = batch['mol_weights'].to(device)
                 pred_graph_vals = pred_graph
                 loss_graph = F.mse_loss(pred_graph_vals, true_graph_vals)
                 loss = loss_node + loss_edge + args.graph_loss_weight * loss_graph
                 val_losses.append(loss.item())
+                val_graph_embeddings.append(pred_graph_vals.cpu())
+                
         avg_val_loss = float(np.mean(val_losses)) if val_losses else 0.0
+
+        # Save embeddings if this is the best epoch
+        if avg_val_loss < best_val_loss:
+            best_val_loss = avg_val_loss
+            best_epoch = epoch
+            save_path = os.path.join(args.save_dir, f"best_val_graph_embeddings_epoch{epoch}.npy")
+            np.save(save_path, torch.cat(val_graph_embeddings, dim=0).numpy())
+            logging.info(f"📦 Saved best graph embeddings to {save_path}")
         
         logging.info(f"Epoch {epoch}/{args.epochs} | Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f} | "
                      f"(node: {loss_node:.4f}, edge: {loss_edge:.4f}, graph: {loss_graph:.4f})")
