@@ -77,73 +77,64 @@ def save_checkpoint(path: str,
 import torch.serialization
 from chemprop.args import TrainArgs  # ✅ needed for loading args safely
 
-def load_checkpoint(path: str, device: torch.device = None, logger=None) -> Union[Dict, torch.nn.Module]:
+def load_checkpoint(path: str, device: torch.device = None, logger=None) -> Union[Dict, MoleculeModel]:
     """
-    Loads a model checkpoint. Supports both full and partial checkpoints.
+    Loads a model checkpoint. Returns either raw state_dict or a MoleculeModel.
+    Supports full training checkpoints or weights-only partial checkpoints.
     """
-    if logger:
-        logger.debug(f"📦 Loading checkpoint from {path}")
+    debug = logger.debug if logger else print
+    info = logger.info if logger else print
 
     try:
         state = torch.load(path, map_location=device or 'cpu', weights_only=False)
     except Exception as e:
         raise RuntimeError(f"❌ Failed to load checkpoint at {path}: {e}")
 
-    # ✅ Case 1: Model weights only (used for SSL or frozen loading)
-    if isinstance(state, dict) and 'model_state_dict' not in state and 'state_dict' in state:
-        return state  # Just the weights
-
-    # ✅ Case 2: Full training checkpoint
-    if isinstance(state, dict) and ('state_dict' in state or 'model_state_dict' in state):
+    # Case 1: Weights-only checkpoint (e.g., SSL pretraining)
+    if isinstance(state, dict) and 'state_dict' in state and 'args' not in state:
         return state
 
-    # ❌ Invalid checkpoint
+    # Case 2: Full training checkpoint
+    if isinstance(state, dict) and 'state_dict' in state and 'args' in state:
+        args_dict = state['args']
+        if isinstance(args_dict, Namespace):
+            args_dict = vars(args_dict)
+        args = TrainArgs().from_dict(args_dict, skip_unsettable=True)
+
+        if device is not None:
+            args.device = device
+
+        model = MoleculeModel(args)
+        model_state_dict = model.state_dict()
+        loaded_state_dict = state['state_dict']
+
+        # ⚠️ Skip missing or mismatched parameters
+        pretrained_state_dict = {}
+        for loaded_param_name in loaded_state_dict.keys():
+            if re.match(r'(encoder\.encoder\.)([Wc])', loaded_param_name):
+                param_name = loaded_param_name.replace('encoder.encoder', 'encoder.encoder.0')
+            else:
+                param_name = loaded_param_name
+
+            if param_name not in model_state_dict:
+                info(f'Warning: Pretrained parameter "{loaded_param_name}" not found in model.')
+            elif model_state_dict[param_name].shape != loaded_state_dict[loaded_param_name].shape:
+                info(f'Warning: Shape mismatch for "{loaded_param_name}". '
+                     f'Checkpoint: {loaded_state_dict[loaded_param_name].shape}, '
+                     f'Model: {model_state_dict[param_name].shape}')
+            else:
+                debug(f'✅ Loading pretrained parameter "{param_name}"')
+                pretrained_state_dict[param_name] = loaded_state_dict[loaded_param_name]
+
+        model_state_dict.update(pretrained_state_dict)
+        model.load_state_dict(model_state_dict)
+
+        if args.cuda:
+            model = model.to(args.device)
+
+        return model
+
     raise ValueError(f"❌ Checkpoint at {path} is not a valid Chemprop checkpoint.")
-
-
-
-    # Load model and args
-    state = torch.load(path, map_location=lambda storage, loc: storage)
-    args = TrainArgs()
-    args.from_dict(vars(state['args']), skip_unsettable=True)
-    loaded_state_dict = state['state_dict']
-
-    if device is not None:
-        args.device = device
-
-    # Build model
-    model = MoleculeModel(args)
-    model_state_dict = model.state_dict()
-
-    # Skip missing parameters and parameters of mismatched size
-    pretrained_state_dict = {}
-    for loaded_param_name in loaded_state_dict.keys():
-        # Backward compatibility for parameter names
-        if re.match(r'(encoder\.encoder\.)([Wc])', loaded_param_name):
-            param_name = loaded_param_name.replace('encoder.encoder', 'encoder.encoder.0')
-        else:
-            param_name = loaded_param_name
-
-        # Load pretrained parameter, skipping unmatched parameters
-        if param_name not in model_state_dict:
-            info(f'Warning: Pretrained parameter "{loaded_param_name}" cannot be found in model parameters.')
-        elif model_state_dict[param_name].shape != loaded_state_dict[loaded_param_name].shape:
-            info(f'Warning: Pretrained parameter "{loaded_param_name}" '
-                 f'of shape {loaded_state_dict[loaded_param_name].shape} does not match corresponding '
-                 f'model parameter of shape {model_state_dict[param_name].shape}.')
-        else:
-            debug(f'Loading pretrained parameter "{loaded_param_name}".')
-            pretrained_state_dict[param_name] = loaded_state_dict[loaded_param_name]
-
-    # Load pretrained weights
-    model_state_dict.update(pretrained_state_dict)
-    model.load_state_dict(model_state_dict)
-
-    if args.cuda:
-        debug('Moving model to cuda')
-    model = model.to(args.device)
-
-    return model
 
 
 def overwrite_state_dict(loaded_param_name: str,
