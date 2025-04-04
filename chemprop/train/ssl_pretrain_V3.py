@@ -523,30 +523,23 @@ def main():
                 
                 avg_val_loss = float(np.mean(val_losses)) if val_losses else 0.0
 
-            # Step the learning rate scheduler BEFORE updating best_val_loss
-            old_lr = scheduler.optimizer.param_groups[0]['lr']
-            scheduler.step(avg_val_loss)
-            new_lr = scheduler.optimizer.param_groups[0]['lr']
+            # 🔍 Check for improvement (BEFORE LR scheduler sees avg_val_loss)
+            is_improved = avg_val_loss < best_val_loss
             
-            if new_lr < old_lr:
-                logging.info(f"🔻 LR reduced from {old_lr:.6e} → {new_lr:.6e} due to plateau in val loss.")
-                lr_no_improve_epochs = 0  # Reset LR patience
-            else:
-                lr_no_improve_epochs += 1
-                logging.info(f"⏸️ LR unchanged at {new_lr:.6e} (no val loss improvement yet, LR patience: {lr_no_improve_epochs}/{args.scheduler_patience})")
-            
-            # Check for improvement and save best model AFTER scheduler step
-            if avg_val_loss < best_val_loss:
+            if is_improved:
                 best_val_loss = avg_val_loss
                 best_epoch = epoch
                 epochs_no_improve = 0
+                lr_no_improve_epochs = 0
             
-                # 📦 Save best graph embeddings (overwrite)
+                os.makedirs(args.save_dir, exist_ok=True)
+            
+                # 📦 Save graph embeddings
                 emb_path = os.path.join(args.save_dir, "best_val_graph_embeddings.npy")
                 np.save(emb_path, torch.cat(val_graph_embeddings, dim=0).numpy())
                 logging.info(f"📦 Saved best graph embeddings to {emb_path}")
             
-                # 📝 Save SMILES and weights for best val set (if available)
+                # 📝 Save SMILES/weights if available
                 if 'smiles' in batch:
                     val_smiles = batch['smiles']
                     val_mol_weights = batch['mol_weights'].cpu().numpy()
@@ -558,7 +551,7 @@ def main():
                     smiles_and_weights.to_csv(val_csv_path, index=False)
                     logging.info(f"📝 Saved val SMILES and weights to {val_csv_path}")
             
-                # 💾 Save model
+                # 💾 Save best model
                 model_path = os.path.join(args.save_dir, "model.pt")
                 torch.save({
                     'state_dict': model.state_dict(),
@@ -568,7 +561,7 @@ def main():
                 }, model_path)
                 logging.info(f"✅ Saved best model to {model_path} (val_loss={best_val_loss:.4f}, epoch={best_epoch})")
             
-                # 📊 Log loss to CSV
+                # 📊 Append loss to CSV
                 log_path = os.path.join(args.save_dir, 'ssl_loss_log.csv')
                 write_header = not os.path.exists(log_path)
                 with open(log_path, 'a') as f:
@@ -578,16 +571,29 @@ def main():
             
             else:
                 epochs_no_improve += 1
+                lr_no_improve_epochs += 1
                 logging.info(f"🕰️ Early stopping patience counter: {epochs_no_improve}/{args.early_stop_patience}")
             
-            # 🧾 Epoch summary
+            # 🔁 Step LR scheduler (AFTER updating best_val_loss)
+            old_lr = scheduler.optimizer.param_groups[0]['lr']
+            scheduler.step(avg_val_loss)
+            new_lr = scheduler.optimizer.param_groups[0]['lr']
+            
+            if new_lr < old_lr:
+                logging.info(f"🔻 LR reduced from {old_lr:.6e} → {new_lr:.6e} due to plateau in val loss.")
+                lr_no_improve_epochs = 0
+            else:
+                logging.info(f"⏸️ LR unchanged at {new_lr:.6e} (LR patience: {lr_no_improve_epochs}/{args.scheduler_patience})")
+            
+            # 🧾 Epoch Summary
             logging.info(f"Epoch {epoch}/{args.epochs} | Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f} | "
                          f"(node: {loss_node:.4f}, edge: {loss_edge:.4f}, graph: {loss_graph:.4f})")
             
-            # ⏹️ Early stopping check
+            # ⏹️ Early stopping
             if epochs_no_improve >= early_stop_patience:
                 logging.info(f"⏹️ Early stopping triggered after {early_stop_patience} epochs with no improvement.")
                 break
+
 
 
 
