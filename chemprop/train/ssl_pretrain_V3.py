@@ -523,14 +523,6 @@ def main():
                 
                 avg_val_loss = float(np.mean(val_losses)) if val_losses else 0.0
 
-        # Check for improvement
-        if avg_val_loss < best_val_loss:
-            best_val_loss = avg_val_loss
-            best_epoch = epoch
-            epochs_no_improve = 0
-        
-            os.makedirs(args.save_dir, exist_ok=True)
-        
             # Step the learning rate scheduler BEFORE updating best_val_loss
             old_lr = scheduler.optimizer.param_groups[0]['lr']
             scheduler.step(avg_val_loss)
