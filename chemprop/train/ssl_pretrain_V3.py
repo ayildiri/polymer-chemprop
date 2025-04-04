@@ -464,6 +464,8 @@ def main():
         val_losses = []
         all_graph_embeddings = []  # To store graph-level embeddings
         val_graph_embeddings = []  # for best-epoch saving
+        all_val_smiles = []
+        all_val_weights = []
         with torch.no_grad():
             for batch in val_loader:
                 atom_feats = batch['atom_feats'].to(device)
@@ -521,6 +523,9 @@ def main():
                 loss = loss_node + loss_edge + args.graph_loss_weight * loss_graph
                 val_losses.append(loss.item())
                 val_graph_embeddings.append(pred_graph_vals.cpu())
+                if 'smiles' in batch:
+                    all_val_smiles.extend(batch['smiles'])
+                    all_val_weights.extend(batch['mol_weights'].cpu().numpy())
                 
                 avg_val_loss = float(np.mean(val_losses)) if val_losses else 0.0
 
@@ -541,16 +546,15 @@ def main():
                 logging.info(f"📦 Saved best graph embeddings to {emb_path}")
             
                 # 📝 Save SMILES/weights if available
-                if 'smiles' in batch:
-                    val_smiles = batch['smiles']
-                    val_mol_weights = batch['mol_weights'].cpu().numpy()
+                if all_val_smiles and len(all_val_smiles) == len(all_val_weights):
                     smiles_and_weights = pd.DataFrame({
-                        'poly_chemprop_input': val_smiles,
-                        'mol_weights': val_mol_weights
+                        'poly_chemprop_input': all_val_smiles,
+                        'mol_weights': all_val_weights
                     })
                     val_csv_path = os.path.join(args.save_dir, 'val_smiles_and_weights.csv')
                     smiles_and_weights.to_csv(val_csv_path, index=False)
                     logging.info(f"📝 Saved val SMILES and weights to {val_csv_path}")
+
             
                 # 💾 Save best model
                 model_path = os.path.join(args.save_dir, "model.pt")
