@@ -101,20 +101,27 @@ def load_checkpoint(path: str, device: torch.device = None, logger=None) -> Unio
     if logger:
         logger.debug(f"📦 Loading checkpoint from {path}")
 
-    # ✅ Use safe unpickling with known trusted types (Namespace, np.float64, np.ndarray)
-    
-    state = torch.load(path, map_location=device or 'cpu', weights_only=False)
+    # Case 1: Weights only (used for SSL or frozen encoder loading)
+    if 'state_dict' not in state and 'model_state_dict' not in state:
+        return state  # Just a raw state_dict (weights only)
 
-    # Case 1: Model weights only (used for SSL or frozen loading)
-    if isinstance(state, dict) and 'model_state_dict' not in state:
-        return state  # just weights
+    # Case 2: Full training checkpoint (used for resume training or prediction)
+    if 'state_dict' in state:
+        # Assume args are saved as a dict (chemprop-compatible)
+        args_dict = state['args']
+        args = TrainArgs().from_dict(args_dict, skip_unsettable=True)
 
-    # Case 2: Full training checkpoint (used for resume training or fine-tuning)
-    elif 'model_state_dict' in state:
-        return state
+        # Build model and load weights
+        model = MoleculeModel(args)
+        model.load_state_dict(state['state_dict'])
 
-    else:
-        raise ValueError(f"Checkpoint at {path} is not a valid Chemprop checkpoint.")
+        if device is not None:
+            model = model.to(device)
+
+        return model
+
+    # Unknown structure
+    raise ValueError(f"Checkpoint at {path} is not a valid Chemprop checkpoint.")
 
 
     # Load model and args
