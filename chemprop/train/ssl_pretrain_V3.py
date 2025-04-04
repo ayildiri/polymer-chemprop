@@ -323,6 +323,8 @@ def main():
     parser.add_argument('--depth', type=int, default=3, help='Number of message passing steps.')
     parser.add_argument('--dropout', type=float, default=0.0, help='Dropout probability (not used in message passing).')
     parser.add_argument('--seed', type=int, default=0, help='Random seed for reproducibility.')
+    parser.add_argument('--save_graph_embeddings', action='store_true', help='Whether to save graph-level embeddings after SSL training.')
+    parser.add_argument('--graph_embeddings_path', type=str, default=None, help='Path to save graph-level embeddings (as .npy).')
     parser.add_argument('--no_cuda', action='store_true', help='Disable GPU usage even if available.')
     parser.add_argument('--dataset_type', type=str, default='regression', help='Dataset type (for compatibility, not used).')
     parser.add_argument('--ignore_columns', type=str, default=None, help='Columns to ignore (not used).')
