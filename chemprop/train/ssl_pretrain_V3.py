@@ -234,6 +234,7 @@ def parse_polymer_smiles(polymer_smiles):
 def build_polymer_graph(smiles):
     """Build PolymerGraph from an extended polymer SMILES string."""
     graph = PolymerGraph()
+    graph.smiles = smiles
     monomers, ratios, edges_info, Xn = parse_polymer_smiles(smiles)
     if len(monomers) == 0:
         return None
@@ -279,7 +280,7 @@ def build_polymer_graph(smiles):
         graph.n_edges += 1
         graph.b2rev[e_index] = rev_index
         graph.b2rev[rev_index] = e_index
-        graph.smiles = smiles
+        
     weight_factor = 1.0
     if Xn is not None:
         try:
@@ -304,7 +305,7 @@ def build_polymer_graph(smiles):
             graph.n_edges += 1
             graph.b2rev[e_index] = rev_index
             graph.b2rev[rev_index] = e_index
-            graph.smiles = smiles
+            
     return graph
 
 def main():
