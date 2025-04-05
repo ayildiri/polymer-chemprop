@@ -279,6 +279,7 @@ def build_polymer_graph(smiles):
         graph.n_edges += 1
         graph.b2rev[e_index] = rev_index
         graph.b2rev[rev_index] = e_index
+        graph.smiles = smiles
     weight_factor = 1.0
     if Xn is not None:
         try:
