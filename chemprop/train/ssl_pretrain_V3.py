@@ -527,7 +527,7 @@ def main():
                 loss_graph = F.mse_loss(pred_graph_vals, true_graph_vals)
                 loss = loss_node + loss_edge + args.graph_loss_weight * loss_graph
                 val_losses.append(loss.item())
-                val_graph_embeddings.append(pred_graph.cpu()
+                val_graph_embeddings.append(pred_graph.cpu())
                 if 'smiles' in batch:
                     all_val_smiles.extend(batch['smiles'])
                     all_val_weights.extend(batch['mol_weights'].cpu().numpy())
