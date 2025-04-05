@@ -182,7 +182,7 @@ class SSLPretrainModel(nn.Module):
         pred_node = self.node_head(node_repr)
         pred_edge = self.edge_head(hidden_edges)
         pred_graph = self.graph_head(graph_embeds).squeeze(-1)  # shape [batch_size]
-        return pred_node, pred_edge, pred_graph
+        return pred_node, pred_edge, pred_graph, graph_embeds
 
 def parse_polymer_smiles(polymer_smiles):
     """Parse extended polymer SMILES input into monomer parts, ratios, edges and Xn."""
@@ -445,7 +445,7 @@ def main():
                 atom_feats[mask_atom_indices] = 0.0
             if mask_edge_indices:
                 edge_feats[mask_edge_indices] = 0.0
-            pred_node, pred_edge, pred_graph = model(atom_feats, edge_src, edge_dst, edge_feats, edge_weights, b2rev, node_to_graph)
+            pred_node, pred_edge, pred_graph, graph_embeds = model(atom_feats, edge_src, edge_dst, edge_feats, edge_weights, b2rev, node_to_graph)
             loss_node = 0.0
             loss_edge = 0.0
             if mask_atom_indices:
@@ -506,10 +506,10 @@ def main():
                 if mask_edge_indices:
                     edge_feats[mask_edge_indices] = 0.0
                     
-                pred_node, pred_edge, pred_graph = model(atom_feats, edge_src, edge_dst, edge_feats, edge_weights, b2rev, node_to_graph)
+                pred_node, pred_edge, pred_graph, graph_embeds = model(atom_feats, edge_src, edge_dst, edge_feats, edge_weights, b2rev, node_to_graph)
                 
                 # Save graph embeddings
-                all_graph_embeddings.append(pred_graph.cpu())  # Detach and store on CPU
+                all_graph_embeddings.append(graph_embeds.cpu())  # Detach and store on CPU
                 
                 loss_node = 0.0
                 loss_edge = 0.0
@@ -527,7 +527,7 @@ def main():
                 loss_graph = F.mse_loss(pred_graph_vals, true_graph_vals)
                 loss = loss_node + loss_edge + args.graph_loss_weight * loss_graph
                 val_losses.append(loss.item())
-                val_graph_embeddings.append(pred_graph.cpu())
+                val_graph_embeddings.append(graph_embeds.cpu())
                 if 'smiles' in batch:
                     all_val_smiles.extend(batch['smiles'])
                     all_val_weights.extend(batch['mol_weights'].cpu().numpy())
