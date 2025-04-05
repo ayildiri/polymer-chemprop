@@ -552,6 +552,7 @@ def main():
 
 
                 # 📊 Save graph embeddings with SMILES to CSV
+                graph_embeds_tensor = torch.cat(val_graph_embeddings, dim=0)  # shape [num_graphs, dim]
                 if len(all_val_smiles) == len(val_graph_embeddings):
                     embed_dim = graph_embeds_tensor.size(1)
                     embed_np = graph_embeds_tensor.numpy()
