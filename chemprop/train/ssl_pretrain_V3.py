@@ -59,6 +59,7 @@ class PolymerGraph:
         self.edge_weights = []    # list of float
         self.b2rev = []           # reverse edge mapping list
         self.mol_weight = 0.0     # pseudo-label (ensemble molecular weight)
+        self.smiles = None  
 
 class PolymerDataset(Dataset):
     def __init__(self, graphs):
@@ -117,7 +118,8 @@ def collate_graphs(batch_graphs):
         'b2rev': b2rev,
         'node_to_graph': node_to_graph,
         'batch_size': len(batch_graphs),
-        'mol_weights': mol_weights
+        'mol_weights': mol_weights,
+        'smiles': [g.smiles for g in batch_graphs]
     }
 
 class SSLPretrainModel(nn.Module):
@@ -301,6 +303,7 @@ def build_polymer_graph(smiles):
             graph.n_edges += 1
             graph.b2rev[e_index] = rev_index
             graph.b2rev[rev_index] = e_index
+            graph.smiles = smiles
     return graph
 
 def main():
