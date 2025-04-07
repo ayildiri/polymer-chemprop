@@ -568,9 +568,20 @@ def main():
 
                 # Save node and edge embeddings for best epoch
                 node_embeds = node_repr.detach().cpu().numpy()
-                edge_embeds = edge_repr.detach().cpu().numpy()  # from hidden_edges
-                edge_src_np = edge_src.cpu().numpy()
-                edge_dst_np = edge_dst.cpu().numpy()
+                all_edge_embeds.append(edge_repr.cpu())
+                all_edge_srcs.append(edge_src.cpu())
+                all_edge_dsts.append(edge_dst.cpu())
+                all_node_to_graph.append(node_to_graph[edge_src].cpu())
+  
+                # Concatenate all edge data
+                edge_embeds_tensor = torch.cat(all_edge_embeds, dim=0)
+                edge_src_tensor = torch.cat(all_edge_srcs, dim=0)
+                edge_dst_tensor = torch.cat(all_edge_dsts, dim=0)
+                edge_graph_indices = torch.cat(all_node_to_graph, dim=0)
+                
+                edge_embeds = edge_embeds_tensor.numpy()
+                edge_src_np = edge_src_tensor.numpy()
+                edge_dst_np = edge_dst_tensor.numpy()
 
                 # 🧠 Extract node-level metadata (atomic number, degree, is_aromatic) from full val_graphs
                 node_atom_numbers = []
