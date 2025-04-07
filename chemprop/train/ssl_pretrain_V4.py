@@ -1,4 +1,4 @@
-# ssl_pretrain_V3.py
+# ssl_pretrain_V4.py
 """
 Self-supervised pretraining script for polymer-chemprop.
 It loads polymer ensemble SMILES from a CSV (with 'poly_chemprop_input' column), 
