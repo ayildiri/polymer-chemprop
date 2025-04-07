@@ -466,13 +466,17 @@ def main():
             train_losses.append(loss.item())
         avg_train_loss = float(np.mean(train_losses)) if train_losses else 0.0
         model.eval()
+        
         val_losses = []
         all_graph_embeddings = []  # To store graph-level embeddings
         val_graph_embeddings = []  # for best-epoch saving
         all_val_smiles = []
         all_val_weights = []
         all_edge_embeds = []
-        
+        all_edge_srcs = []
+        all_edge_dsts = []
+        all_node_to_graph = []
+ 
         with torch.no_grad():
             for batch in val_loader:
                 atom_feats = batch['atom_feats'].to(device)
