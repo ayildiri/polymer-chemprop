@@ -588,6 +588,7 @@ def main():
                 edge_embeds = edge_embeds_tensor.numpy()
                 edge_src_np = edge_src_tensor.numpy()
                 edge_dst_np = edge_dst_tensor.numpy()
+                num_edges = edge_embeds.shape[0]
 
                 # 🧠 Extract node-level metadata (atomic number, degree, is_aromatic) from full val_graphs
                 node_atom_numbers = []
@@ -661,7 +662,20 @@ def main():
                             dst_is_aromatic.append(a_dst.GetIsAromatic())
                             src_degree.append(a_src.GetDegree())
                             dst_degree.append(a_dst.GetDegree())
-                
+                            
+                # ⚠️ Final size check before saving
+                if len(bond_types) != num_edges:
+                    logging.warning(f"⚠️ Edge metadata length mismatch: bond_types={len(bond_types)}, expected={num_edges}")
+                    bond_types = bond_types[:num_edges]
+                    is_conjugated = is_conjugated[:num_edges]
+                    is_aromatic_bond = is_aromatic_bond[:num_edges]
+                    src_atomic_number = src_atomic_number[:num_edges]
+                    dst_atomic_number = dst_atomic_number[:num_edges]
+                    src_is_aromatic = src_is_aromatic[:num_edges]
+                    dst_is_aromatic = dst_is_aromatic[:num_edges]
+                    src_degree = src_degree[:num_edges]
+                    dst_degree = dst_degree[:num_edges]
+                    
                 # ✅ Save edge embeddings with edge-level metadata
                 edge_df = pd.DataFrame(edge_embeds)
                 edge_df.insert(0, 'graph_index', node_to_graph[edge_src].cpu().numpy())
