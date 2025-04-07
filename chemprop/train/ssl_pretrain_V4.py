@@ -445,7 +445,7 @@ def main():
                 atom_feats[mask_atom_indices] = 0.0
             if mask_edge_indices:
                 edge_feats[mask_edge_indices] = 0.0
-            pred_node, pred_edge, pred_graph, graph_embeds = model(atom_feats, edge_src, edge_dst, edge_feats, edge_weights, b2rev, node_to_graph)
+            pred_node, pred_edge, pred_graph, graph_embeds, _, _ = model(atom_feats, edge_src, edge_dst, edge_feats, edge_weights, b2rev, node_to_graph)
             loss_node = 0.0
             loss_edge = 0.0
             if mask_atom_indices:
