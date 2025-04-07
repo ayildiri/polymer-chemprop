@@ -588,14 +588,13 @@ def main():
                         atom_numbers.append(atom.GetAtomicNum())
                         atom_degrees.append(atom.GetDegree())
                         is_aromatic.append(int(atom.GetIsAromatic()))
-                
-                node_df['atomic_number'] = atom_numbers
-                node_df['degree'] = atom_degrees
-                node_df['is_aromatic'] = is_aromatic
 
                 # Save node embeddings with SMILES index (node_to_graph maps node -> graph index)
                 node_df = pd.DataFrame(node_embeds)
                 node_df.insert(0, 'graph_index', node_to_graph.cpu().numpy())  # map each node to polymer
+                node_df['atomic_number'] = atom_numbers
+                node_df['degree'] = atom_degrees
+                node_df['is_aromatic'] = is_aromatic
                 node_csv_path = os.path.join(args.save_dir, 'node_embeddings.csv')
                 node_df.to_csv(node_csv_path, index=False)
                 logging.info(f"🧠 Saved node embeddings to {node_csv_path}")
