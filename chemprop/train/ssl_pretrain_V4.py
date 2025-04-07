@@ -471,6 +471,8 @@ def main():
         val_graph_embeddings = []  # for best-epoch saving
         all_val_smiles = []
         all_val_weights = []
+        all_edge_embeds = []
+        
         with torch.no_grad():
             for batch in val_loader:
                 atom_feats = batch['atom_feats'].to(device)
