@@ -523,33 +523,7 @@ def main():
                     edge_feats[mask_edge_indices] = 0.0
                     
                 pred_node, pred_edge, pred_graph, graph_embeds, node_repr, edge_repr = model(atom_feats, edge_src, edge_dst, edge_feats, edge_weights, b2rev, node_to_graph)
-                if edge_repr is not None and edge_repr.size(0) > 0:
-                    all_edge_embeds.append(edge_repr.cpu())
-                    all_edge_srcs.append(edge_src.cpu())
-                    all_edge_dsts.append(edge_dst.cpu())
-                    all_node_to_graph.append(node_to_graph[edge_src].cpu())
-                    
-                    # ⬇️ Add matching metadata for each edge in the batch
-                    for smi in batch['smiles']:
-                        mol = Chem.MolFromSmiles('.'.join(parse_polymer_smiles(smi)[0]))
-                        if mol is None:
-                            continue
-                        for bond in mol.GetBonds():
-                            u = bond.GetBeginAtomIdx()
-                            v = bond.GetEndAtomIdx()
-                            atom_u = mol.GetAtomWithIdx(u)
-                            atom_v = mol.GetAtomWithIdx(v)
-                    
-                            for (src, dst, a_src, a_dst) in [(u, v, atom_u, atom_v), (v, u, atom_v, atom_u)]:
-                                all_bond_types.append(str(bond.GetBondType()))
-                                all_is_conjugated.append(bond.GetIsConjugated())
-                                all_is_aromatic_bond.append(bond.GetIsAromatic())
-                                all_src_atomic_number.append(a_src.GetAtomicNum())
-                                all_dst_atomic_number.append(a_dst.GetAtomicNum())
-                                all_src_is_aromatic.append(a_src.GetIsAromatic())
-                                all_dst_is_aromatic.append(a_dst.GetIsAromatic())
-                                all_src_degree.append(a_src.GetDegree())
-                                all_dst_degree.append(a_dst.GetDegree())  
+                
                 # Save graph embeddings
                 all_graph_embeddings.append(graph_embeds.cpu())  # Detach and store on CPU
                 
@@ -584,49 +558,70 @@ def main():
                 best_epoch = epoch
                 epochs_no_improve = 0
                 lr_no_improve_epochs = 0
-            
+
                 os.makedirs(args.save_dir, exist_ok=True)
-            
+
                 # 📦 Save graph embeddings
                 emb_path = os.path.join(args.save_dir, "best_val_graph_embeddings.npy")
                 np.save(emb_path, torch.cat(val_graph_embeddings, dim=0).numpy())
                 logging.info(f"📦 Saved best graph embeddings to {emb_path}")
 
-
-                # 📊 Save graph embeddings with SMILES to CSV
-                graph_embeds_tensor = torch.cat(val_graph_embeddings, dim=0)  # shape [num_graphs, dim]
+                # 📎 Save graph embeddings with SMILES
+                graph_embeds_tensor = torch.cat(val_graph_embeddings, dim=0)
                 if len(all_val_smiles) == graph_embeds_tensor.shape[0]:
-                    embed_dim = graph_embeds_tensor.size(1)
-                    embed_np = graph_embeds_tensor.numpy()
-                
-                    embed_df = pd.DataFrame(embed_np, columns=[f'embedding_{i}' for i in range(embed_dim)])
+                    embed_df = pd.DataFrame(graph_embeds_tensor.numpy(), columns=[f'embedding_{i}' for i in range(graph_embeds_tensor.size(1))])
                     embed_df.insert(0, 'poly_chemprop_input', all_val_smiles)
-                
                     embed_csv_path = os.path.join(args.save_dir, 'graph_embeddings_with_smiles.csv')
                     embed_df.to_csv(embed_csv_path, index=False)
                     logging.info(f"📎 Saved graph embeddings + SMILES to {embed_csv_path}")
                 else:
                     logging.warning("⚠️ Number of SMILES does not match number of embeddings. Skipping CSV save.")
 
-                # Save node and edge embeddings for best epoch
-                node_embeds = node_repr.detach().cpu().numpy()  
-  
-                # Concatenate all edge data
+                # ⬇️ Save node and edge embeddings for this best epoch
+                node_embeds = node_repr.detach().cpu().numpy()
+
+                # Save edge embedding tensors
+                if edge_repr is not None and edge_repr.size(0) > 0:
+                    all_edge_embeds.append(edge_repr.cpu())
+                    all_edge_srcs.append(edge_src.cpu())
+                    all_edge_dsts.append(edge_dst.cpu())
+                    all_node_to_graph.append(node_to_graph[edge_src].cpu())
+
+                    for smi in batch['smiles']:
+                        mol = Chem.MolFromSmiles('.'.join(parse_polymer_smiles(smi)[0]))
+                        if mol is None:
+                            continue
+                        for bond in mol.GetBonds():
+                            u = bond.GetBeginAtomIdx()
+                            v = bond.GetEndAtomIdx()
+                            atom_u = mol.GetAtomWithIdx(u)
+                            atom_v = mol.GetAtomWithIdx(v)
+                            for (src, dst, a_src, a_dst) in [(u, v, atom_u, atom_v), (v, u, atom_v, atom_u)]:
+                                all_bond_types.append(str(bond.GetBondType()))
+                                all_is_conjugated.append(bond.GetIsConjugated())
+                                all_is_aromatic_bond.append(bond.GetIsAromatic())
+                                all_src_atomic_number.append(a_src.GetAtomicNum())
+                                all_dst_atomic_number.append(a_dst.GetAtomicNum())
+                                all_src_is_aromatic.append(a_src.GetIsAromatic())
+                                all_dst_is_aromatic.append(a_dst.GetIsAromatic())
+                                all_src_degree.append(a_src.GetDegree())
+                                all_dst_degree.append(a_dst.GetDegree())
+
+                # 🔗 Finalize and save edge embeddings
                 edge_embeds_tensor = torch.cat(all_edge_embeds, dim=0)
                 edge_src_tensor = torch.cat(all_edge_srcs, dim=0)
                 edge_dst_tensor = torch.cat(all_edge_dsts, dim=0)
                 edge_graph_indices = torch.cat(all_node_to_graph, dim=0)
-                
+
                 edge_embeds = edge_embeds_tensor.numpy()
                 edge_src_np = edge_src_tensor.numpy()
                 edge_dst_np = edge_dst_tensor.numpy()
                 num_edges = edge_embeds.shape[0]
 
-                # 🧠 Extract node-level metadata (atomic number, degree, is_aromatic) from full val_graphs
+                # 🧠 Node metadata
                 node_atom_numbers = []
                 node_degrees = []
                 node_is_aromatic = []
-                
                 for graph in val_graphs:
                     mol = Chem.MolFromSmiles('.'.join(parse_polymer_smiles(graph.smiles)[0]))
                     if mol is None:
@@ -638,79 +633,32 @@ def main():
                         node_atom_numbers.append(atom.GetAtomicNum())
                         node_degrees.append(atom.GetDegree())
                         node_is_aromatic.append(int(atom.GetIsAromatic()))
-                
-                # ✅ Save node embeddings with metadata
-                num_nodes = node_embeds.shape[0]
+
                 node_df = pd.DataFrame(node_embeds)
                 node_df.insert(0, 'graph_index', node_to_graph.cpu().numpy())
-                node_df['atomic_number'] = node_atom_numbers[:num_nodes]
-                node_df['degree'] = node_degrees[:num_nodes]
-                node_df['is_aromatic'] = node_is_aromatic[:num_nodes]
-                
+                node_df['atomic_number'] = node_atom_numbers[:len(node_df)]
+                node_df['degree'] = node_degrees[:len(node_df)]
+                node_df['is_aromatic'] = node_is_aromatic[:len(node_df)]
                 node_csv_path = os.path.join(args.save_dir, 'node_embeddings.csv')
                 node_df.to_csv(node_csv_path, index=False)
                 logging.info(f"🧠 Saved node embeddings to {node_csv_path}")
-                
-                # 🔗 Extract edge-level metadata for the full val set
-                bond_types = []
-                is_conjugated = []
-                is_aromatic_bond = []
-                src_atomic_number = []
-                dst_atomic_number = []
-                src_is_aromatic = []
-                dst_is_aromatic = []
-                src_degree = []
-                dst_degree = []
-                
-                for graph in val_graphs:
-                    mol = Chem.MolFromSmiles('.'.join(parse_polymer_smiles(graph.smiles)[0]))
-                    if mol is None:
-                        num_edges = graph.n_edges
-                        bond_types.extend([None] * num_edges)
-                        is_conjugated.extend([None] * num_edges)
-                        is_aromatic_bond.extend([None] * num_edges)
-                        src_atomic_number.extend([None] * num_edges)
-                        dst_atomic_number.extend([None] * num_edges)
-                        src_is_aromatic.extend([None] * num_edges)
-                        dst_is_aromatic.extend([None] * num_edges)
-                        src_degree.extend([None] * num_edges)
-                        dst_degree.extend([None] * num_edges)
-                        continue
-                
-                    for bond in mol.GetBonds():
-                        u = bond.GetBeginAtomIdx()
-                        v = bond.GetEndAtomIdx()
-                        atom_u = mol.GetAtomWithIdx(u)
-                        atom_v = mol.GetAtomWithIdx(v)
-                
-                        # Append twice for both directions
-                        for (src, dst, a_src, a_dst) in [(u, v, atom_u, atom_v), (v, u, atom_v, atom_u)]:
-                            bond_types.append(str(bond.GetBondType()))
-                            is_conjugated.append(bond.GetIsConjugated())
-                            is_aromatic_bond.append(bond.GetIsAromatic())
-                            src_atomic_number.append(a_src.GetAtomicNum())
-                            dst_atomic_number.append(a_dst.GetAtomicNum())
-                            src_is_aromatic.append(a_src.GetIsAromatic())
-                            dst_is_aromatic.append(a_dst.GetIsAromatic())
-                            src_degree.append(a_src.GetDegree())
-                            dst_degree.append(a_dst.GetDegree())
-                            
-                # ⚠️ Final size check before saving
-                if len(bond_types) != num_edges:
-                    logging.warning(f"⚠️ Edge metadata length mismatch: bond_types={len(bond_types)}, expected={num_edges}")
-                    bond_types = bond_types[:num_edges]
-                    is_conjugated = is_conjugated[:num_edges]
-                    is_aromatic_bond = is_aromatic_bond[:num_edges]
-                    src_atomic_number = src_atomic_number[:num_edges]
-                    dst_atomic_number = dst_atomic_number[:num_edges]
-                    src_is_aromatic = src_is_aromatic[:num_edges]
-                    dst_is_aromatic = dst_is_aromatic[:num_edges]
-                    src_degree = src_degree[:num_edges]
-                    dst_degree = dst_degree[:num_edges]
-                    
-                # ✅ Save edge embeddings with edge-level metadata
+
+                # 🧪 Validate edge metadata length
+                if len(all_bond_types) != num_edges:
+                    logging.warning(f"⚠️ Edge metadata length mismatch: bond_types={len(all_bond_types)}, expected={num_edges}")
+                    all_bond_types = all_bond_types[:num_edges]
+                    all_is_conjugated = all_is_conjugated[:num_edges]
+                    all_is_aromatic_bond = all_is_aromatic_bond[:num_edges]
+                    all_src_atomic_number = all_src_atomic_number[:num_edges]
+                    all_dst_atomic_number = all_dst_atomic_number[:num_edges]
+                    all_src_is_aromatic = all_src_is_aromatic[:num_edges]
+                    all_dst_is_aromatic = all_dst_is_aromatic[:num_edges]
+                    all_src_degree = all_src_degree[:num_edges]
+                    all_dst_degree = all_dst_degree[:num_edges]
+
+                # 💾 Save edge dataframe
                 edge_df = pd.DataFrame(edge_embeds)
-                edge_df.insert(0, 'graph_index', node_to_graph[edge_src].cpu().numpy())
+                edge_df.insert(0, 'graph_index', edge_graph_indices.numpy())
                 edge_df.insert(1, 'src', edge_src_np)
                 edge_df.insert(2, 'dst', edge_dst_np)
                 edge_df['bond_type'] = all_bond_types
@@ -722,13 +670,10 @@ def main():
                 edge_df['dst_is_aromatic'] = all_dst_is_aromatic
                 edge_df['src_degree'] = all_src_degree
                 edge_df['dst_degree'] = all_dst_degree
-                
                 edge_csv_path = os.path.join(args.save_dir, 'edge_embeddings.csv')
                 edge_df.to_csv(edge_csv_path, index=False)
                 logging.info(f"🔗 Saved edge embeddings to {edge_csv_path}")
 
-
-              
                 # 📝 Save SMILES/weights if available
                 if len(all_val_smiles) == len(all_val_weights):
                     smiles_and_weights = pd.DataFrame({
@@ -738,6 +683,7 @@ def main():
                     val_csv_path = os.path.join(args.save_dir, 'val_smiles_and_weights.csv')
                     smiles_and_weights.to_csv(val_csv_path, index=False)
                     logging.info(f"📝 Saved val SMILES and weights to {val_csv_path}")
+
 
             
                 # 💾 Save best model
