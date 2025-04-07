@@ -476,7 +476,17 @@ def main():
         all_edge_srcs = []
         all_edge_dsts = []
         all_node_to_graph = []
- 
+        all_bond_types = []
+        all_is_conjugated = []
+        all_is_aromatic_bond = []
+        all_src_atomic_number = []
+        all_dst_atomic_number = []
+        all_src_is_aromatic = []
+        all_dst_is_aromatic = []
+        all_src_degree = []
+        all_dst_degree = []
+        
+         
         with torch.no_grad():
             for batch in val_loader:
                 atom_feats = batch['atom_feats'].to(device)
@@ -574,10 +584,32 @@ def main():
 
                 # Save node and edge embeddings for best epoch
                 node_embeds = node_repr.detach().cpu().numpy()
-                all_edge_embeds.append(edge_repr.cpu())
-                all_edge_srcs.append(edge_src.cpu())
-                all_edge_dsts.append(edge_dst.cpu())
-                all_node_to_graph.append(node_to_graph[edge_src].cpu())
+                if edge_repr is not None and edge_repr.size(0) > 0:
+                    all_edge_embeds.append(edge_repr.cpu())
+                    all_edge_srcs.append(edge_src.cpu())
+                    all_edge_dsts.append(edge_dst.cpu())
+                    all_node_to_graph.append(node_to_graph[edge_src].cpu())
+
+                for smi in all_val_smiles:
+                    mol = Chem.MolFromSmiles('.'.join(parse_polymer_smiles(smi)[0]))
+                    if mol is None:
+                        continue
+                    for bond in mol.GetBonds():
+                        u = bond.GetBeginAtomIdx()
+                        v = bond.GetEndAtomIdx()
+                        atom_u = mol.GetAtomWithIdx(u)
+                        atom_v = mol.GetAtomWithIdx(v)
+                        
+                        for (src, dst, a_src, a_dst) in [(u, v, atom_u, atom_v), (v, u, atom_v, atom_u)]:
+                            all_bond_types.append(str(bond.GetBondType()))
+                            all_is_conjugated.append(bond.GetIsConjugated())
+                            all_is_aromatic_bond.append(bond.GetIsAromatic())
+                            all_src_atomic_number.append(a_src.GetAtomicNum())
+                            all_dst_atomic_number.append(a_dst.GetAtomicNum())
+                            all_src_is_aromatic.append(a_src.GetIsAromatic())
+                            all_dst_is_aromatic.append(a_dst.GetIsAromatic())
+                            all_src_degree.append(a_src.GetDegree())
+                            all_dst_degree.append(a_dst.GetDegree())
   
                 # Concatenate all edge data
                 edge_embeds_tensor = torch.cat(all_edge_embeds, dim=0)
@@ -681,15 +713,15 @@ def main():
                 edge_df.insert(0, 'graph_index', node_to_graph[edge_src].cpu().numpy())
                 edge_df.insert(1, 'src', edge_src_np)
                 edge_df.insert(2, 'dst', edge_dst_np)
-                edge_df['bond_type'] = bond_types
-                edge_df['is_conjugated'] = is_conjugated
-                edge_df['is_aromatic'] = is_aromatic_bond
-                edge_df['src_atomic_number'] = src_atomic_number
-                edge_df['dst_atomic_number'] = dst_atomic_number
-                edge_df['src_is_aromatic'] = src_is_aromatic
-                edge_df['dst_is_aromatic'] = dst_is_aromatic
-                edge_df['src_degree'] = src_degree
-                edge_df['dst_degree'] = dst_degree
+                edge_df['bond_type'] = all_bond_types
+                edge_df['is_conjugated'] = all_is_conjugated
+                edge_df['is_aromatic'] = all_is_aromatic_bond
+                edge_df['src_atomic_number'] = all_src_atomic_number
+                edge_df['dst_atomic_number'] = all_dst_atomic_number
+                edge_df['src_is_aromatic'] = all_src_is_aromatic
+                edge_df['dst_is_aromatic'] = all_dst_is_aromatic
+                edge_df['src_degree'] = all_src_degree
+                edge_df['dst_degree'] = all_dst_degree
                 
                 edge_csv_path = os.path.join(args.save_dir, 'edge_embeddings.csv')
                 edge_df.to_csv(edge_csv_path, index=False)
