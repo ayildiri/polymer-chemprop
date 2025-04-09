@@ -167,14 +167,6 @@ def run_training(args: TrainArgs,
         set_cache_graph(False)
         num_workers = args.num_workers
 
-    train_data_loader = MoleculeDataLoader(
-        dataset=train_data,
-        batch_size=args.batch_size,
-        num_workers=num_workers,
-        class_balance=args.class_balance,
-        shuffle=True,
-        seed=args.seed
-    )
     val_data_loader = MoleculeDataLoader(
         dataset=val_data,
         batch_size=args.batch_size,
@@ -186,6 +178,15 @@ def run_training(args: TrainArgs,
         num_workers=num_workers
     )
 
+    train_data_loader = MoleculeDataLoader(
+        dataset=train_data,
+        batch_size=args.batch_size,
+        num_workers=num_workers,
+        class_balance=args.class_balance,
+        shuffle=True,
+        seed=args.seed
+    )
+                     
     # ➕ Create a new train loader without shuffling for evaluation
     train_eval_data_loader = MoleculeDataLoader(
         dataset=train_data,
@@ -278,7 +279,7 @@ def run_training(args: TrainArgs,
             
             train_scores = evaluate(
                 model=model,
-                data_loader=train_data_loader,
+                data_loader=train_eval_data_loader,,
                 num_tasks=args.num_tasks,
                 metrics=args.metrics,
                 dataset_type=args.dataset_type,
