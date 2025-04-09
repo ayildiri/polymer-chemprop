@@ -237,6 +237,11 @@ def run_training(args: TrainArgs,
 
         best_score = float('inf') if args.minimize_score else -float('inf')
         best_epoch, n_iter = 0, 0
+
+        # Setup CSV logging
+        csv_log_path = os.path.join(save_dir, 'train_val_loss_log.csv')
+        write_header = not os.path.exists(csv_log_path)
+        
         for epoch in trange(start_epoch, args.epochs):
             debug(f'Epoch {epoch}')
             n_iter = train(
@@ -252,6 +257,7 @@ def run_training(args: TrainArgs,
             )
             if isinstance(scheduler, ExponentialLR):
                 scheduler.step()
+                
             val_scores = evaluate(
                 model=model,
                 data_loader=val_data_loader,
@@ -261,50 +267,35 @@ def run_training(args: TrainArgs,
                 scaler=scaler,
                 logger=logger
             )
-            # 📝 Save train and val metrics to CSV
-            train_scores = evaluate(
-                model=model,
-                data_loader=train_data_loader,
-                num_tasks=args.num_tasks,
-                metrics=args.metrics,
-                dataset_type=args.dataset_type,
-                scaler=scaler,
-                logger=logger
-            )
-            
-            csv_path = os.path.join(save_dir, 'train_val_loss_log.csv')
-            write_header = not os.path.exists(csv_path)
-            
-            with open(csv_path, 'a', newline='') as csvfile:
-                writer = csv.writer(csvfile)
+
+            # 🔸 Write CSV log
+            with open(csv_log_path, 'a', newline='') as f:
+                writer_csv = csv.writer(f)
                 if write_header:
-                    headers = ['epoch']
-                    headers += [f'train_{metric}' for metric in train_scores.keys()]
-                    headers += [f'val_{metric}' for metric in val_scores.keys()]
-                    writer.writerow(headers)
-            
+                    header = ['epoch']
+                    for metric in args.metrics:
+                        header.append(f'train_avg_{metric}')
+                        header.append(f'val_avg_{metric}')
+                        header += [f'train_{task}_{metric}' for task in args.task_names]
+                        header += [f'val_{task}_{metric}' for task in args.task_names]
+                    writer_csv.writerow(header)
+                    write_header = False
+
                 row = [epoch]
-                row += [np.nanmean(train_scores[m]) for m in train_scores]
-                row += [np.nanmean(val_scores[m]) for m in val_scores]
-                writer.writerow(row)
+                for metric in args.metrics:
+                    train_vals = train_scores[metric]
+                    val_vals = val_scores[metric]
+                    row.append(np.nanmean(train_vals))
+                    row.append(np.nanmean(val_vals))
+                    row += train_vals
+                    row += val_vals
+                writer_csv.writerow(row)
 
             debug(f"📊 Raw val_scores: {val_scores}")
             for metric, scores in val_scores.items():
                 avg_val_score = np.nanmean(scores)
                 debug(f'Validation {metric} = {avg_val_score:.6f}')
                 writer.add_scalar(f'validation_{metric}', avg_val_score, n_iter)
-
-                # 📒 Log all metrics to CSV
-                    log_path = os.path.join(save_dir, 'train_val_loss_log.csv')
-                    write_header = not os.path.exists(log_path)
-                
-                    with open(log_path, 'a') as f:
-                        if write_header:
-                            header = ['epoch', f'avg_val_{metric}'] + [f'{task}_{metric}' for task in args.task_names]
-                            f.write(','.join(header) + '\n')
-                
-                        values = [epoch, avg_val_score] + scores
-                        f.write(','.join(map(str, values)) + '\n')
                 
                 if args.show_individual_scores:
                     for task_name, val_score in zip(args.task_names, scores):
