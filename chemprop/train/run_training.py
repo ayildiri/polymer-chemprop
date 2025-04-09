@@ -267,7 +267,17 @@ def run_training(args: TrainArgs,
                 scaler=scaler,
                 logger=logger
             )
-
+            
+            train_scores = evaluate(
+                model=model,
+                data_loader=train_data_loader,
+                num_tasks=args.num_tasks,
+                metrics=args.metrics,
+                dataset_type=args.dataset_type,
+                scaler=scaler,
+                logger=logger
+            )
+            
             # 🔸 Write CSV log
             with open(csv_log_path, 'a', newline='') as f:
                 writer_csv = csv.writer(f)
