@@ -186,6 +186,14 @@ def run_training(args: TrainArgs,
         num_workers=num_workers
     )
 
+    # ➕ Create a new train loader without shuffling for evaluation
+    train_eval_data_loader = MoleculeDataLoader(
+        dataset=train_data,
+        batch_size=args.batch_size,
+        num_workers=num_workers,
+        shuffle=False  # This is key!
+    )
+
     if args.class_balance:
         debug(f'With class_balance, effective train size = {train_data_loader.iter_size:,}')
 
