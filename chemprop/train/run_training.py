@@ -279,7 +279,7 @@ def run_training(args: TrainArgs,
             
             train_scores = evaluate(
                 model=model,
-                data_loader=train_eval_data_loader,,
+                data_loader=train_eval_data_loader,
                 num_tasks=args.num_tasks,
                 metrics=args.metrics,
                 dataset_type=args.dataset_type,
