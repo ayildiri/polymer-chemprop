@@ -1,4 +1,5 @@
 import json
+import csv
 from logging import Logger
 import os
 from typing import Dict, List, Union
@@ -260,12 +261,51 @@ def run_training(args: TrainArgs,
                 scaler=scaler,
                 logger=logger
             )
+            # 📝 Save train and val metrics to CSV
+            train_scores = evaluate(
+                model=model,
+                data_loader=train_data_loader,
+                num_tasks=args.num_tasks,
+                metrics=args.metrics,
+                dataset_type=args.dataset_type,
+                scaler=scaler,
+                logger=logger
+            )
+            
+            csv_path = os.path.join(save_dir, 'train_val_loss_log.csv')
+            write_header = not os.path.exists(csv_path)
+            
+            with open(csv_path, 'a', newline='') as csvfile:
+                writer = csv.writer(csvfile)
+                if write_header:
+                    headers = ['epoch']
+                    headers += [f'train_{metric}' for metric in train_scores.keys()]
+                    headers += [f'val_{metric}' for metric in val_scores.keys()]
+                    writer.writerow(headers)
+            
+                row = [epoch]
+                row += [np.nanmean(train_scores[m]) for m in train_scores]
+                row += [np.nanmean(val_scores[m]) for m in val_scores]
+                writer.writerow(row)
+
             debug(f"📊 Raw val_scores: {val_scores}")
             for metric, scores in val_scores.items():
                 avg_val_score = np.nanmean(scores)
                 debug(f'Validation {metric} = {avg_val_score:.6f}')
                 writer.add_scalar(f'validation_{metric}', avg_val_score, n_iter)
 
+                # 📒 Log all metrics to CSV
+                    log_path = os.path.join(save_dir, 'train_val_loss_log.csv')
+                    write_header = not os.path.exists(log_path)
+                
+                    with open(log_path, 'a') as f:
+                        if write_header:
+                            header = ['epoch', f'avg_val_{metric}'] + [f'{task}_{metric}' for task in args.task_names]
+                            f.write(','.join(header) + '\n')
+                
+                        values = [epoch, avg_val_score] + scores
+                        f.write(','.join(map(str, values)) + '\n')
+                
                 if args.show_individual_scores:
                     for task_name, val_score in zip(args.task_names, scores):
                         debug(f'Validation {task_name} {metric} = {val_score:.6f}')
