@@ -7,15 +7,8 @@ import csv
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.utils.data import Dataset, DataLoader
 
-# If using PyTorch Geometric for graph data
-try:
-    from torch_geometric.data import Data, DataLoader
-    from torch_geometric.nn import MessagePassing, global_add_pool
-except ImportError:
-    Data = None
-    DataLoader = None
-    MessagePassing = nn.Module  # fallback if PyG is not available
 
 # GNN model with node, edge, and graph prediction heads
 class PolymerGNN(nn.Module):
