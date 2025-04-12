@@ -309,6 +309,20 @@ def build_polymer_graph(smiles):
             
     return graph
 
+def run_ssl_training(args, train_loader, val_loader, atom_feat_dim, bond_feat_dim):
+    model = SSLPretrainModel(atom_feat_dim, bond_feat_dim, args.hidden_size, args.depth, args.dropout)
+    device = torch.device('cuda' if (torch.cuda.is_available() and not args.no_cuda) else 'cpu')
+    model.to(device)
+    total_params = sum(p.numel() for p in model.parameters())
+    logging.info(f"🧠 Model has {total_params:,} parameters.")
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=args.scheduler_patience, factor=0.5)
+    best_val_loss = float('inf')
+    best_epoch = -1
+    epochs_no_improve = 0
+    lr_no_improve_epochs = 0
+    early_stop_patience = args.early_stop_patience
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_path', type=str, required=True)
