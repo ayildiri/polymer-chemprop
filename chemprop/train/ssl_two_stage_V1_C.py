@@ -1,4 +1,4 @@
-# ssl_pretrain_V1_C.py
+# ssl_pretrain_V5.py
 """
 It performs:
 1. Node- and edge-level pretraining (masking atoms/bonds and predicting their features)
@@ -308,6 +308,13 @@ def build_polymer_graph(smiles):
         if atom.GetSymbol() == '*' and atom.GetAtomMapNum() != 0:
             dummy_index_map[atom.GetAtomMapNum()] = idx
     
+    # Get bond feature dimension from a sample bond if available or use default
+    bond_feat_dim = 0
+    if ensemble_mol.GetNumBonds() > 0:
+        sample_bond = ensemble_mol.GetBondWithIdx(0)
+        sample_bf = get_bond_features(sample_bond)
+        bond_feat_dim = len(sample_bf)
+    
     # Add edges within monomers
     for bond in ensemble_mol.GetBonds():
         u = bond.GetBeginAtomIdx()
@@ -345,9 +352,16 @@ def build_polymer_graph(smiles):
             u = dummy_index_map[u]
             v = dummy_index_map[v]
             
-            fake_bond = Chem.Bond()  # create a dummy bond to pass into bond_features
-            bf = bond_features(fake_bond)
-
+            # Create empty bond features instead of trying to instantiate a Bond object
+            # RDKit Bond objects cannot be created directly from Python
+            bf = [0.0] * bond_feat_dim if bond_feat_dim > 0 else []
+            
+            # Alternative: If you need actual bond features, use this:
+            # mol = Chem.MolFromSmiles('CC')  # Simple molecule
+            # if mol is not None:
+            #     bond = mol.GetBondWithIdx(0)  # Get the first bond
+            #     bf = get_bond_features(bond)
+            
             e_index = graph.n_edges
             graph.edge_index.append((u, v))
             graph.edge_features.append(bf)
