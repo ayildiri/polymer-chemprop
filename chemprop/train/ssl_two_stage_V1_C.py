@@ -12,6 +12,7 @@ import argparse
 import numpy as np
 import pandas as pd
 import pickle
+import copy
 
 try:
     from rdkit import Chem
@@ -343,6 +344,28 @@ def main():
     if args.polymer:
         set_polymer(True)
 
+    # --- shared dataset loading block (same for both stages) ---
+    import shared_utils_for_ssl  # <- this will contain everything from your existing code
+    data = shared_utils_for_ssl.load_data_and_split(args)
+
+    # ---- STAGE 1 ----
+    logging.info("\n==== STAGE 1: Masked Node + Edge SSL ====")
+    stage1_args = copy.deepcopy(args)
+    stage1_args.graph_loss_weight = 0.0  # only node/edge loss
+    stage1_args.save_dir = os.path.join(args.save_dir, "stage1")
+    shared_utils_for_ssl.run_training(stage1_args, data)
+
+    # ---- STAGE 2 ----
+    logging.info("\n==== STAGE 2: Graph-Level SSL ====")
+    stage2_args = copy.deepcopy(args)
+    stage2_args.mask_atoms = 0
+    stage2_args.mask_edges = 0
+    stage2_args.graph_loss_weight = args.graph_loss_weight  # restore
+    stage2_args.save_dir = os.path.join(args.save_dir, "stage2")
+    stage2_args.resume_from_checkpoint = os.path.join(stage1_args.save_dir, "model.pt")
+    shared_utils_for_ssl.run_training(stage2_args, data)
+
+    
     if args.seed is not None:
         random.seed(args.seed)
         np.random.seed(args.seed)
