@@ -310,60 +310,90 @@ def build_polymer_graph(smiles):
     return graph
 
 def main():
-    
     parser = argparse.ArgumentParser()
-    parser.add_argument('--data_path', type=str, required=True, help='Path to CSV file with poly_chemprop_input column.')
-    parser.add_argument('--save_dir', type=str, required=True, help='Directory to save the pretrained model.')
-    parser.add_argument('--polymer', action='store_true', help='Use polymer-specific atom featurization.')
-    parser.add_argument('--pretrain_frac', type=float, default=1.0, help='Fraction of dataset to use for pretraining.')
-    parser.add_argument('--val_frac', type=float, default=0.1, help='Fraction of data to use for validation.')
-    parser.add_argument('--mask_atoms', type=int, default=2, help='Number of atoms to mask per graph.')
-    parser.add_argument('--mask_edges', type=int, default=2, help='Number of edges to mask per graph.')
-    parser.add_argument('--graph_loss_weight', type=float, default=0.01, help='Weight applied to the graph-level loss (default: 0.01)')
-    parser.add_argument('--pretrain_folds_file', type=str, default=None,help='Optional path to a pickle file defining pretrain splits')
-    parser.add_argument('--epochs', type=int, default=10, help='Number of training epochs.')
-    parser.add_argument('--early_stop_patience', type=int, default=40, help='Patience for early stopping.')
-    parser.add_argument('--scheduler_patience', type=int, default=10, help='Patience for LR scheduler.')
-    parser.add_argument('--batch_size', type=int, default=32, help='Batch size for training.')
-    parser.add_argument('--hidden_size', type=int, default=300, help='Hidden dimensionality for GNN.')
-    parser.add_argument('--depth', type=int, default=3, help='Number of message passing steps.')
-    parser.add_argument('--dropout', type=float, default=0.0, help='Dropout probability (not used in message passing).')
-    parser.add_argument('--seed', type=int, default=0, help='Random seed for reproducibility.')
-    parser.add_argument('--save_graph_embeddings', action='store_true', help='Whether to save graph-level embeddings after SSL training.')
-    parser.add_argument('--graph_embeddings_path', type=str, default=None, help='Path to save graph-level embeddings (as .npy).')
-    parser.add_argument('--no_cuda', action='store_true', help='Disable GPU usage even if available.')
-    parser.add_argument('--dataset_type', type=str, default='regression', help='Dataset type (for compatibility, not used).')
-    parser.add_argument('--ignore_columns', type=str, default=None, help='Columns to ignore (not used).')
-    parser.add_argument('--features_path', type=str, default=None, help='Path to additional features (not used).')
-    parser.add_argument('--atom_descriptors_path', type=str, default=None, help='Path to atom descriptors (not used).')
-    parser.add_argument('--bond_features_path', type=str, default=None, help='Path to bond features (not used).')
+    parser.add_argument('--data_path', type=str, required=True)
+    parser.add_argument('--save_dir', type=str, required=True)
+    parser.add_argument('--polymer', action='store_true')
+    parser.add_argument('--pretrain_frac', type=float, default=1.0)
+    parser.add_argument('--val_frac', type=float, default=0.1)
+    parser.add_argument('--mask_atoms', type=int, default=2)
+    parser.add_argument('--mask_edges', type=int, default=2)
+    parser.add_argument('--graph_loss_weight', type=float, default=0.01)
+    parser.add_argument('--pretrain_folds_file', type=str, default=None)
+    parser.add_argument('--epochs', type=int, default=10)
+    parser.add_argument('--early_stop_patience', type=int, default=40)
+    parser.add_argument('--scheduler_patience', type=int, default=10)
+    parser.add_argument('--batch_size', type=int, default=32)
+    parser.add_argument('--hidden_size', type=int, default=300)
+    parser.add_argument('--depth', type=int, default=3)
+    parser.add_argument('--dropout', type=float, default=0.0)
+    parser.add_argument('--seed', type=int, default=0)
+    parser.add_argument('--save_graph_embeddings', action='store_true')
+    parser.add_argument('--graph_embeddings_path', type=str, default=None)
+    parser.add_argument('--no_cuda', action='store_true')
+    parser.add_argument('--dataset_type', type=str, default='regression')
+    parser.add_argument('--ignore_columns', type=str, default=None)
+    parser.add_argument('--features_path', type=str, default=None)
+    parser.add_argument('--atom_descriptors_path', type=str, default=None)
+    parser.add_argument('--bond_features_path', type=str, default=None)
     args = parser.parse_args()
 
     epochs_no_improve = 0
 
+    # Set polymer mode and seed
     if args.polymer:
         set_polymer(True)
+    if args.seed is not None:
+        random.seed(args.seed)
+        np.random.seed(args.seed)
+        torch.manual_seed(args.seed)
 
-    # --- shared dataset loading block (same for both stages) ---
-    import shared_utils_for_ssl  # <- this will contain everything from your existing code
-    data = shared_utils_for_ssl.load_data_and_split(args)
+    # === Load data once (shared for both stages) ===
+    df = pd.read_csv(args.data_path)
+    smiles_list = df[SMILES_COL].astype(str).tolist()
 
-    # ---- STAGE 1 ----
-    logging.info("\n==== STAGE 1: Masked Node + Edge SSL ====")
+    if args.pretrain_folds_file is not None:
+        with open(args.pretrain_folds_file, "rb") as f:
+            folds = pickle.load(f)
+        pretrain_indices = [i for i, fold in enumerate(folds) if fold == 0]
+        smiles_list = [smiles_list[i] for i in pretrain_indices]
+
+    elif args.pretrain_frac < 1.0:
+        subset_size = int(len(smiles_list) * args.pretrain_frac)
+        smiles_list = random.sample(smiles_list, max(subset_size, 1))
+
+    graphs = [build_polymer_graph(smi) for smi in smiles_list if isinstance(smi, str)]
+    graphs = [g for g in graphs if g is not None]
+    random.shuffle(graphs)
+    val_count = int(len(graphs) * args.val_frac)
+    val_graphs = graphs[:val_count]
+    train_graphs = graphs[val_count:]
+
+    train_dataset = PolymerDataset(train_graphs)
+    val_dataset = PolymerDataset(val_graphs)
+    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, collate_fn=collate_graphs)
+    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, collate_fn=collate_graphs)
+    atom_feat_dim = len(train_graphs[0].atom_features[0])
+    bond_feat_dim = len(train_graphs[0].edge_features[0]) if train_graphs[0].n_edges > 0 else 0
+
+    # === Stage 1: Node + Edge SSL ===
+    logging.info("\n===== STAGE 1: Masked Node + Edge SSL =====")
     stage1_args = copy.deepcopy(args)
-    stage1_args.graph_loss_weight = 0.0  # only node/edge loss
+    stage1_args.graph_loss_weight = 0.0
     stage1_args.save_dir = os.path.join(args.save_dir, "stage1")
-    shared_utils_for_ssl.run_training(stage1_args, data)
+    stage1_args.mask_atoms = args.mask_atoms
+    stage1_args.mask_edges = args.mask_edges
+    run_ssl_training(stage1_args, train_loader, val_loader, atom_feat_dim, bond_feat_dim)
 
-    # ---- STAGE 2 ----
-    logging.info("\n==== STAGE 2: Graph-Level SSL ====")
+    # === Stage 2: Graph-level SSL ===
+    logging.info("\n===== STAGE 2: Graph-Level SSL =====")
     stage2_args = copy.deepcopy(args)
+    stage2_args.graph_loss_weight = args.graph_loss_weight
     stage2_args.mask_atoms = 0
     stage2_args.mask_edges = 0
-    stage2_args.graph_loss_weight = args.graph_loss_weight  # restore
     stage2_args.save_dir = os.path.join(args.save_dir, "stage2")
     stage2_args.resume_from_checkpoint = os.path.join(stage1_args.save_dir, "model.pt")
-    shared_utils_for_ssl.run_training(stage2_args, data)
+    run_ssl_training(stage2_args, train_loader, val_loader, atom_feat_dim, bond_feat_dim)
 
     
     if args.seed is not None:
