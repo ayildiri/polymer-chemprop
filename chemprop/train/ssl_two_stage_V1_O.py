@@ -383,7 +383,7 @@ def main():
     stage1_args.save_dir = os.path.join(args.save_dir, "stage1")
     stage1_args.mask_atoms = args.mask_atoms
     stage1_args.mask_edges = args.mask_edges
-    run_ssl_training(stage1_args, train_loader, val_loader, atom_feat_dim, bond_feat_dim)
+    run_training(stage1_args, train_loader, val_loader, atom_feat_dim, bond_feat_dim))
 
     # === Stage 2: Graph-level SSL ===
     logging.info("\n===== STAGE 2: Graph-Level SSL =====")
@@ -393,7 +393,7 @@ def main():
     stage2_args.mask_edges = 0
     stage2_args.save_dir = os.path.join(args.save_dir, "stage2")
     stage2_args.resume_from_checkpoint = os.path.join(stage1_args.save_dir, "model.pt")
-    run_ssl_training(stage2_args, train_loader, val_loader, atom_feat_dim, bond_feat_dim)
+    run_training(stage1_args, train_loader, val_loader, atom_feat_dim, bond_feat_dim)
 
     
     if args.seed is not None:
