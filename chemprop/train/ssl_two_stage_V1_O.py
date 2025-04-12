@@ -383,6 +383,7 @@ def run_ssl_training(args, train_loader, val_loader, atom_feat_dim, bond_feat_di
         model.eval()
         val_losses = []
         val_graph_embeddings, val_smiles = [], []
+        val_weights = []
         with torch.no_grad():
             for batch in val_loader:
                 atom_feats = batch['atom_feats'].to(device)
@@ -417,7 +418,7 @@ def run_ssl_training(args, train_loader, val_loader, atom_feat_dim, bond_feat_di
                 if mask_edge_indices:
                     edge_feats[mask_edge_indices] = 0.0
 
-                pred_node, pred_edge, pred_graph, graph_embeds, _, _ = model(atom_feats, edge_src, edge_dst, edge_feats, edge_weights, b2rev, node_to_graph)
+                pred_node, pred_edge, pred_graph, graph_embeds, node_repr, edge_repr = model(atom_feats, edge_src, edge_dst, edge_feats, edge_weights, b2rev, node_to_graph)
                 loss_node = F.mse_loss(pred_node[mask_atom_indices], batch['atom_feats'].to(device)[mask_atom_indices]) if mask_atom_indices else 0.0
                 loss_edge = F.mse_loss(pred_edge[mask_edge_indices], batch['edge_feats'].to(device)[mask_edge_indices]) if mask_edge_indices else 0.0
                 loss_graph = F.mse_loss(pred_graph, batch['mol_weights'].to(device))
@@ -426,6 +427,7 @@ def run_ssl_training(args, train_loader, val_loader, atom_feat_dim, bond_feat_di
                 val_graph_embeddings.append(graph_embeds.cpu())
                 if 'smiles' in batch:
                     val_smiles.extend(batch['smiles'])
+                    val_weights.extend(batch['mol_weights'].cpu().tolist())
 
         avg_val_loss = float(np.mean(val_losses)) if val_losses else 0.0
         is_improved = avg_val_loss < best_val_loss
@@ -457,6 +459,30 @@ def run_ssl_training(args, train_loader, val_loader, atom_feat_dim, bond_feat_di
                     embed_df.to_csv(os.path.join(args.save_dir, 'graph_embeddings_with_smiles.csv'), index=False)
                     logging.info("📎 Saved graph embeddings with SMILES.")
 
+                smiles_df = pd.DataFrame({
+                    'poly_chemprop_input': val_smiles,
+                    'mol_weights': val_weights
+                })
+                smiles_df.to_csv(os.path.join(args.save_dir, 'val_smiles_and_weights.csv'), index=False)
+                logging.info("📝 Saved val SMILES and weights.")
+
+                if node_repr is not None:
+                    node_df = pd.DataFrame(node_repr.cpu().numpy())
+                    node_df.to_csv(os.path.join(args.save_dir, 'node_embeddings.csv'), index=False)
+                    logging.info("🧠 Saved node embeddings.")
+
+                if edge_repr is not None and edge_repr.size(0) > 0:
+                    edge_df = pd.DataFrame(edge_repr.cpu().numpy())
+                    edge_df.to_csv(os.path.join(args.save_dir, 'edge_embeddings.csv'), index=False)
+                    logging.info("🔗 Saved edge embeddings.")
+
+            log_path = os.path.join(args.save_dir, 'ssl_loss_log.csv')
+            write_header = not os.path.exists(log_path)
+            with open(log_path, 'a') as f:
+                if write_header:
+                    f.write('epoch,train_loss,val_loss,node_loss,edge_loss,graph_loss\n')
+                f.write(f'{epoch},{avg_train_loss},{avg_val_loss},{loss_node:.4f},{loss_edge:.4f},{loss_graph:.4f}\n')
+
         else:
             epochs_no_improve += 1
             lr_no_improve_epochs += 1
@@ -476,6 +502,7 @@ def run_ssl_training(args, train_loader, val_loader, atom_feat_dim, bond_feat_di
         if epochs_no_improve >= early_stop_patience:
             logging.info(f"⏹️ Early stopping triggered after {early_stop_patience} epochs with no improvement.")
             break
+
 
 def main():
     parser = argparse.ArgumentParser()
