@@ -12,6 +12,7 @@ import argparse
 import numpy as np
 import pandas as pd
 import pickle
+import copy
 
 try:
     from rdkit import Chem
