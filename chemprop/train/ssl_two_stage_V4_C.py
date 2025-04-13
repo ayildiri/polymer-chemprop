@@ -6,7 +6,6 @@ It performs:
 3. Various weight transfer strategies for downstream fine-tuning
 
 Key improvements:
-- Better ensemble weight calculation based on paper
 - Improved sequential training between stages
 - More careful weight transfer mechanism
 - Adjusted hyperparameters
