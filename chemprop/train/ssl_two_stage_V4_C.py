@@ -617,35 +617,35 @@ class GraphLevelTask:
         }
     
   
-def eval_step(self, batch, device):
-    # Similar to train_step but without optimization
-    atom_feats = batch['atom_feats'].to(device)
-    edge_src = batch['edge_src'].to(device)
-    edge_dst = batch['edge_dst'].to(device)
-    edge_feats = batch['edge_feats'].to(device)
-    edge_weights = batch['edge_weights'].to(device) if batch['edge_weights'].numel() > 0 else torch.tensor([], device=device)
-    b2rev = batch['b2rev'].to(device)
-    node_to_graph = batch['node_to_graph'].to(device)
-    mol_weights = batch['mol_weights'].to(device)
-
-    # Normalize for consistency with training
-    if torch.std(mol_weights) > 0:
-        mol_weights_scaled = (mol_weights - torch.mean(mol_weights)) / torch.std(mol_weights)
-    else:
-        mol_weights_scaled = mol_weights
+    def eval_step(self, batch, device):
+        # Similar to train_step but without optimization
+        atom_feats = batch['atom_feats'].to(device)
+        edge_src = batch['edge_src'].to(device)
+        edge_dst = batch['edge_dst'].to(device)
+        edge_feats = batch['edge_feats'].to(device)
+        edge_weights = batch['edge_weights'].to(device) if batch['edge_weights'].numel() > 0 else torch.tensor([], device=device)
+        b2rev = batch['b2rev'].to(device)
+        node_to_graph = batch['node_to_graph'].to(device)
+        mol_weights = batch['mol_weights'].to(device)
     
-    with torch.no_grad():
-        _, _, pred_graph, graph_embeds, node_repr, edge_repr = self.model(atom_feats, edge_src, edge_dst, edge_feats, edge_weights, b2rev, node_to_graph)
-    
-    loss = F.mse_loss(pred_graph, mol_weights_scaled).item() * self.graph_loss_weight
-    
-    return {
-        'loss': loss,
-        'loss_graph': loss,
-        'graph_embeds': graph_embeds,
-        'node_repr': node_repr,
-        'edge_repr': edge_repr
-    }
+        # Normalize for consistency with training
+        if torch.std(mol_weights) > 0:
+            mol_weights_scaled = (mol_weights - torch.mean(mol_weights)) / torch.std(mol_weights)
+        else:
+            mol_weights_scaled = mol_weights
+        
+        with torch.no_grad():
+            _, _, pred_graph, graph_embeds, node_repr, edge_repr = self.model(atom_feats, edge_src, edge_dst, edge_feats, edge_weights, b2rev, node_to_graph)
+        
+        loss = F.mse_loss(pred_graph, mol_weights_scaled).item() * self.graph_loss_weight
+        
+        return {
+            'loss': loss,
+            'loss_graph': loss,
+            'graph_embeds': graph_embeds,
+            'node_repr': node_repr,
+            'edge_repr': edge_repr
+        }
 
 def run_pretraining_epoch(task, loader, device, optimizer=None, train=True, scheduler=None):
     """Run one epoch of pretraining (either training or validation)."""
