@@ -480,8 +480,15 @@ def run_ssl_training(args, train_loader, val_loader, atom_feat_dim, bond_feat_di
             write_header = not os.path.exists(log_path)
             with open(log_path, 'a') as f:
                 if write_header:
-                    f.write('epoch,train_loss,val_loss,node_loss,edge_loss,graph_loss\n')
-                f.write(f'{epoch},{avg_train_loss},{avg_val_loss},{loss_node:.4f},{loss_edge:.4f},{loss_graph:.4f}\n')
+                    f.write('epoch,train_loss,val_loss,node_loss,edge_loss')
+                    if args.graph_loss_weight > 0:
+                        f.write(',graph_loss')
+                    f.write('\n')
+                
+                f.write(f'{epoch},{avg_train_loss:.4f},{avg_val_loss:.4f},{loss_node:.4f},{loss_edge:.4f}')
+                if args.graph_loss_weight > 0:
+                    f.write(f',{loss_graph:.4f}')
+                f.write('\n')
 
         else:
             epochs_no_improve += 1
