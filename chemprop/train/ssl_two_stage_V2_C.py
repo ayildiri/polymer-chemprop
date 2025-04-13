@@ -1,4 +1,4 @@
-# ssl_two_stage_V2_C.py
+# ssl_pretrain_V5.py
 """
 It performs:
 1. Node- and edge-level pretraining (masking atoms/bonds and predicting their features)
@@ -1006,7 +1006,7 @@ def main():
     # Load best model from Stage 2
     logging.info(f"Loading best stage 2 model from epoch {best_epoch}...")
     checkpoint = torch.load(best_stage2_model_path)
-    model.state_dict = checkpoint['model_state_dict']
+    model.load_state_dict(checkpoint['model_state_dict'])
     
     # Save the final model with the appropriate transfer strategy
     # Depending on transfer_strategy, we'll save different parts of the model
@@ -1016,22 +1016,17 @@ def main():
     if transfer_strategy == 'a':
         # Strategy A: only message-passing layers
         final_model_state = {
-            'W_initial': model.W_initial.state_dict(),
-            'W_message': model.W_message.state_dict(),
-            'W_node': model.W_node.state_dict()
+            k: v for k, v in model.state_dict().items() 
+            if any(name in k for name in ['W_initial', 'W_message', 'W_node'])
         }
         logging.info("📦 Saved model with transfer strategy A: only message-passing layers")
     
     elif transfer_strategy == 'b':
         # Strategy B: message-passing + first two FC layers
         final_model_state = {
-            'W_initial': model.W_initial.state_dict(),
-            'W_message': model.W_message.state_dict(),
-            'W_node': model.W_node.state_dict(),
-            'graph_head.0.weight': model.graph_head[0].weight,
-            'graph_head.0.bias': model.graph_head[0].bias,
-            'graph_head.2.weight': model.graph_head[2].weight, 
-            'graph_head.2.bias': model.graph_head[2].bias
+            k: v for k, v in model.state_dict().items() 
+            if any(name in k for name in ['W_initial', 'W_message', 'W_node']) or
+               (k.startswith('graph_head.0') or k.startswith('graph_head.2'))
         }
         logging.info("📦 Saved model with transfer strategy B: message-passing + two FC layers")
     
