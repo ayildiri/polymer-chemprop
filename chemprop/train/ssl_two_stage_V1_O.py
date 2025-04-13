@@ -467,33 +467,27 @@ def run_ssl_training(args, train_loader, val_loader, atom_feat_dim, bond_feat_di
                 logging.info("📝 Saved val SMILES and weights.")
         
                 if node_repr is not None:
-                    node_embeds = node_repr.cpu().numpy()
-                    node_atom_numbers = []
-                    node_degrees = []
-                    node_is_aromatic = []
-                    for graph in val_graphs:
-                        mol = Chem.MolFromSmiles('.'.join(parse_polymer_smiles(graph.smiles)[0]))
-                        if mol is None:
-                            node_atom_numbers.extend([None] * graph.n_atoms)
-                            node_degrees.extend([None] * graph.n_atoms)
-                            node_is_aromatic.extend([None] * graph.n_atoms)
-                            continue
-                        for atom in mol.GetAtoms():
-                            node_atom_numbers.append(atom.GetAtomicNum())
-                            node_degrees.append(atom.GetDegree())
-                            node_is_aromatic.append(int(atom.GetIsAromatic()))
-        
-                    node_df = pd.DataFrame(node_embeds)
+                    node_df = pd.DataFrame(node_repr.cpu().numpy())
                     node_df.insert(0, 'graph_index', node_to_graph.cpu().numpy())
                     node_df['atomic_number'] = node_atom_numbers[:len(node_df)]
                     node_df['degree'] = node_degrees[:len(node_df)]
                     node_df['is_aromatic'] = node_is_aromatic[:len(node_df)]
-                    node_csv_path = os.path.join(args.save_dir, 'node_embeddings.csv')
-                    node_df.to_csv(node_csv_path, index=False)
-                    logging.info("🧠 Saved node embeddings to node_embeddings.csv")
+                    node_df.to_csv(os.path.join(args.save_dir, 'node_embeddings.csv'), index=False)
+                    logging.info("🧠 Saved node embeddings.")
         
                 if edge_repr is not None and edge_repr.size(0) > 0:
                     edge_df = pd.DataFrame(edge_repr.cpu().numpy())
+                    edge_df.insert(0, 'graph_index', edge_graph_indices.cpu().numpy())
+                    edge_df.insert(1, 'src', edge_src_tensor.cpu().numpy())
+                    edge_df.insert(2, 'dst', edge_dst_tensor.cpu().numpy())
+                    edge_df['src_atomic_number'] = all_src_atomic_number[:len(edge_df)]
+                    edge_df['dst_atomic_number'] = all_dst_atomic_number[:len(edge_df)]
+                    edge_df['src_degree'] = all_src_degree[:len(edge_df)]
+                    edge_df['dst_degree'] = all_dst_degree[:len(edge_df)]
+                    edge_df['src_is_aromatic'] = all_src_is_aromatic[:len(edge_df)]
+                    edge_df['dst_is_aromatic'] = all_dst_is_aromatic[:len(edge_df)]
+                    edge_df['is_aromatic'] = all_is_aromatic_bond[:len(edge_df)]
+                    edge_df['is_conjugated'] = all_is_conjugated[:len(edge_df)]
                     edge_df.to_csv(os.path.join(args.save_dir, 'edge_embeddings.csv'), index=False)
                     logging.info("🔗 Saved edge embeddings.")
         
@@ -509,7 +503,6 @@ def run_ssl_training(args, train_loader, val_loader, atom_feat_dim, bond_feat_di
                 if args.graph_loss_weight > 0:
                     f.write(f',{loss_graph:.4f}')
                 f.write('\n')
-        
         else:
             epochs_no_improve += 1
             lr_no_improve_epochs += 1
