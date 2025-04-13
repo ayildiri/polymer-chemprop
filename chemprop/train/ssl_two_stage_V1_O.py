@@ -437,7 +437,7 @@ def run_ssl_training(args, train_loader, val_loader, atom_feat_dim, bond_feat_di
             best_epoch = epoch
             epochs_no_improve = 0
             lr_no_improve_epochs = 0
-
+        
             os.makedirs(args.save_dir, exist_ok=True)
             model_path = os.path.join(args.save_dir, "model.pt")
             torch.save({
@@ -447,35 +447,56 @@ def run_ssl_training(args, train_loader, val_loader, atom_feat_dim, bond_feat_di
                 'best_val_loss': best_val_loss
             }, model_path)
             logging.info(f"✅ Saved best model to {model_path} (val_loss={best_val_loss:.4f}, epoch={best_epoch})")
-
+        
             if args.save_graph_embeddings:
                 graph_embeds_tensor = torch.cat(val_graph_embeddings, dim=0)
                 np.save(os.path.join(args.save_dir, 'best_val_graph_embeddings.npy'), graph_embeds_tensor.numpy())
                 logging.info(f"📦 Saved best graph embeddings to best_val_graph_embeddings.npy")
-
+        
                 if len(val_smiles) == graph_embeds_tensor.shape[0]:
                     embed_df = pd.DataFrame(graph_embeds_tensor.numpy(), columns=[f'embedding_{i}' for i in range(graph_embeds_tensor.shape[1])])
                     embed_df.insert(0, 'poly_chemprop_input', val_smiles)
                     embed_df.to_csv(os.path.join(args.save_dir, 'graph_embeddings_with_smiles.csv'), index=False)
                     logging.info("📎 Saved graph embeddings with SMILES.")
-
+        
                 smiles_df = pd.DataFrame({
                     'poly_chemprop_input': val_smiles,
                     'mol_weights': val_weights
                 })
                 smiles_df.to_csv(os.path.join(args.save_dir, 'val_smiles_and_weights.csv'), index=False)
                 logging.info("📝 Saved val SMILES and weights.")
-
+        
                 if node_repr is not None:
-                    node_df = pd.DataFrame(node_repr.cpu().numpy())
-                    node_df.to_csv(os.path.join(args.save_dir, 'node_embeddings.csv'), index=False)
-                    logging.info("🧠 Saved node embeddings.")
-
+                    node_embeds = node_repr.cpu().numpy()
+                    node_atom_numbers = []
+                    node_degrees = []
+                    node_is_aromatic = []
+                    for graph in val_graphs:
+                        mol = Chem.MolFromSmiles('.'.join(parse_polymer_smiles(graph.smiles)[0]))
+                        if mol is None:
+                            node_atom_numbers.extend([None] * graph.n_atoms)
+                            node_degrees.extend([None] * graph.n_atoms)
+                            node_is_aromatic.extend([None] * graph.n_atoms)
+                            continue
+                        for atom in mol.GetAtoms():
+                            node_atom_numbers.append(atom.GetAtomicNum())
+                            node_degrees.append(atom.GetDegree())
+                            node_is_aromatic.append(int(atom.GetIsAromatic()))
+        
+                    node_df = pd.DataFrame(node_embeds)
+                    node_df.insert(0, 'graph_index', node_to_graph.cpu().numpy())
+                    node_df['atomic_number'] = node_atom_numbers[:len(node_df)]
+                    node_df['degree'] = node_degrees[:len(node_df)]
+                    node_df['is_aromatic'] = node_is_aromatic[:len(node_df)]
+                    node_csv_path = os.path.join(args.save_dir, 'node_embeddings.csv')
+                    node_df.to_csv(node_csv_path, index=False)
+                    logging.info("🧠 Saved node embeddings to node_embeddings.csv")
+        
                 if edge_repr is not None and edge_repr.size(0) > 0:
                     edge_df = pd.DataFrame(edge_repr.cpu().numpy())
                     edge_df.to_csv(os.path.join(args.save_dir, 'edge_embeddings.csv'), index=False)
                     logging.info("🔗 Saved edge embeddings.")
-
+        
             log_path = os.path.join(args.save_dir, 'ssl_loss_log.csv')
             write_header = not os.path.exists(log_path)
             with open(log_path, 'a') as f:
@@ -484,33 +505,31 @@ def run_ssl_training(args, train_loader, val_loader, atom_feat_dim, bond_feat_di
                     if args.graph_loss_weight > 0:
                         f.write(',graph_loss')
                     f.write('\n')
-                
                 f.write(f'{epoch},{avg_train_loss:.4f},{avg_val_loss:.4f},{loss_node:.4f},{loss_edge:.4f}')
                 if args.graph_loss_weight > 0:
                     f.write(f',{loss_graph:.4f}')
                 f.write('\n')
-
+        
         else:
             epochs_no_improve += 1
             lr_no_improve_epochs += 1
             logging.info(f"🕰️ Early stopping patience counter: {epochs_no_improve}/{args.early_stop_patience}")
-
+        
         logging.info(f"Epoch {epoch}/{args.epochs} | Train Loss: {avg_train_loss:.4f} | Val Loss: {avg_val_loss:.4f}")
-
+        
         old_lr = scheduler.optimizer.param_groups[0]['lr']
         scheduler.step(avg_val_loss)
         new_lr = scheduler.optimizer.param_groups[0]['lr']
-
+        
         if new_lr < old_lr:
             logging.info(f"🔻 LR reduced from {old_lr:.6e} → {new_lr:.6e} due to plateau in val loss.")
         else:
             logging.info(f"⏸️ LR unchanged at {new_lr:.6e} (LR patience: {lr_no_improve_epochs}/{args.scheduler_patience})")
-
+        
         if epochs_no_improve >= early_stop_patience:
             logging.info(f"⏹️ Early stopping triggered after {early_stop_patience} epochs with no improvement.")
             break
-
-
+            
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_path', type=str, required=True, help='Path to CSV file with poly_chemprop_input column.')
