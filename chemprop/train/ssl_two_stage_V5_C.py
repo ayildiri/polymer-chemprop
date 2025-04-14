@@ -905,11 +905,13 @@ def main():
         val_time = time.time() - start_time
         
         # Update learning rate scheduler (after warmup)
+        old_lr = optimizer.param_groups[0]['lr']
         if epoch > warmup_epochs:
             if isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
                 scheduler.step(val_loss)
             else:
                 scheduler.step()  # Don't pass epoch parameter to step()
+        new_lr = optimizer.param_groups[0]['lr']  # Make sure this comes AFTER the scheduler.step()
         
         # Log learning rate changes
         if new_lr < old_lr:
@@ -1075,11 +1077,13 @@ def main():
         val_time = time.time() - start_time
         
         # Update learning rate scheduler (after warmup)
+        old_lr = optimizer.param_groups[0]['lr']
         if epoch > warmup_epochs:
             if isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
                 scheduler.step(val_loss)
             else:
                 scheduler.step()  # Don't pass epoch parameter to step()
+        new_lr = optimizer.param_groups[0]['lr']  # Make sure this comes AFTER the scheduler.step()
         
         # Log learning rate changes
         if new_lr < old_lr:
