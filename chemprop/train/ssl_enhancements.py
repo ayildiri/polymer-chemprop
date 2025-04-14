@@ -23,15 +23,20 @@ def improve_model_initialization(model):
     return model
 
 def create_improved_scheduler(optimizer, epochs, warmup_epochs=None):
-    """Create a more sophisticated learning rate scheduler"""
+    """Create a more sophisticated learning rate scheduler with proper initialization"""
     # Create a warmup scheduler with cosine annealing
     if warmup_epochs is None:
         warmup_epochs = min(5, epochs // 10)
     
+    # Important: Force set the initial learning rate
+    for param_group in optimizer.param_groups:
+        initial_lr = param_group['lr']  # Store the original learning rate
+        param_group['initial_lr'] = initial_lr  # Make sure this is set for LambdaLR
+    
     def lr_lambda(epoch):
         if epoch < warmup_epochs:
-            # Linear warmup
-            return epoch / warmup_epochs
+            # Linear warmup, starting from a non-zero value (10% of lr)
+            return 0.1 + 0.9 * (epoch / warmup_epochs)
         else:
             # Cosine decay
             return 0.5 * (1 + math.cos(math.pi * (epoch - warmup_epochs) / (epochs - warmup_epochs)))
