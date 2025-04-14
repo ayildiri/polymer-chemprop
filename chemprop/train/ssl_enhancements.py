@@ -256,7 +256,7 @@ class ImprovedGraphLevelTask:
         
         # Compute losses with regularization
         main_loss = F.mse_loss(pred_graph, mol_weights_scaled)
-        aux_loss = F.mse_loss(aux_pred, mol_weights_scaled)
+        aux_loss = F.mse_loss(aux_pred.squeeze(-1), mol_weights_scaled)
         # Add small L2 regularization for graph embeddings
         embedding_reg = 0.001 * (graph_embeds ** 2).mean()
         
@@ -297,7 +297,7 @@ class ImprovedGraphLevelTask:
             aux_pred = self.aux_head(graph_embeds)
         
         main_loss = F.mse_loss(pred_graph, mol_weights_scaled).item()
-        aux_loss = F.mse_loss(aux_pred, mol_weights_scaled).item()
+        aux_loss = F.mse_loss(aux_pred.squeeze(-1), mol_weights_scaled).item()
         embedding_reg = 0.001 * (graph_embeds ** 2).mean().item()
         
         loss = (main_loss + 0.5 * aux_loss + embedding_reg) * self.graph_loss_weight
