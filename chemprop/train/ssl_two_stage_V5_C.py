@@ -875,6 +875,9 @@ def main():
     logging.info(f"Initial learning rate: {initial_lr}")
     
     for epoch in range(1, args.epochs_node_edge + 1):
+        # Define warmup epochs for both standard and enhanced methods
+        warmup_epochs = min(5, args.epochs_node_edge // 10) if not args.use_enhanced_ssl else 5
+        
         # Apply warmup scheduling if in warmup phase
         if epoch <= warmup_epochs:
             # Linear warmup
