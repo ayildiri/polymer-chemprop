@@ -841,6 +841,10 @@ def main():
                                 lr=args.learning_rate, 
                                 weight_decay=args.weight_decay,
                                 betas=(0.9, 0.999))
+    # Ensure optimizer has correct initial learning rate
+    for param_group in optimizer.param_groups:
+        param_group['lr'] = args.learning_rate
+        logging.info(f"Initial learning rate set to: {param_group['lr']}")
     
     # Use both epoch-level LR scheduler and warmup
     if args.use_enhanced_ssl:
@@ -901,10 +905,11 @@ def main():
         val_time = time.time() - start_time
         
         # Update learning rate scheduler (after warmup)
-        old_lr = optimizer.param_groups[0]['lr']
         if epoch > warmup_epochs:
-            scheduler.step(val_loss)
-        new_lr = optimizer.param_groups[0]['lr']
+            if isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+                scheduler.step(val_loss)
+            else:
+                scheduler.step()  # Don't pass epoch parameter to step()
         
         # Log learning rate changes
         if new_lr < old_lr:
@@ -1010,7 +1015,11 @@ def main():
                                  lr=args.learning_rate_graph,
                                  weight_decay=args.weight_decay,
                                  betas=(0.9, 0.999))
-    
+    # Ensure optimizer has correct initial learning rate
+    for param_group in optimizer.param_groups:
+        param_group['lr'] = args.learning_rate
+        logging.info(f"Initial learning rate set to: {param_group['lr']}")
+        
     # Create scheduler
     if args.use_enhanced_ssl:
         scheduler = create_improved_scheduler(optimizer, args.epochs_graph, warmup_epochs=5)
@@ -1066,10 +1075,11 @@ def main():
         val_time = time.time() - start_time
         
         # Update learning rate scheduler (after warmup)
-        old_lr = optimizer.param_groups[0]['lr']
         if epoch > warmup_epochs:
-            scheduler.step(val_loss)
-        new_lr = optimizer.param_groups[0]['lr']
+            if isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+                scheduler.step(val_loss)
+            else:
+                scheduler.step()  # Don't pass epoch parameter to step()
         
         # Log learning rate changes
         if new_lr < old_lr:
