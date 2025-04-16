@@ -244,6 +244,16 @@ def run_training(args: TrainArgs,
             debug(f'📥 Loading pretrained checkpoint from {args.checkpoint_frzn}')
             checkpoint = torch.load(args.checkpoint_frzn, map_location=args.device)
             model.load_state_dict(checkpoint['model_state_dict'], strict=False)
+        
+            # ✅ Unfreeze all layers unless --frzn_encoder or --frzn_ffn_layers are set
+            if not getattr(args, 'frzn_encoder', False) and getattr(args, 'frzn_ffn_layers', 0) == 0:
+                unfrozen = 0
+                for name, param in model.named_parameters():
+                    if not param.requires_grad:
+                        param.requires_grad = True
+                        unfrozen += 1
+                        debug(f'🔓 Unfroze parameter: {name}')
+                debug(f'✅ Unfroze {unfrozen} parameters from checkpoint.')
 
         # ✅ Freeze encoder weights if --frzn_encoder
         if getattr(args, 'frzn_encoder', False):
