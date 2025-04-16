@@ -998,7 +998,14 @@ def main():
         model = improved_weight_transfer(model, checkpoint, args.transfer_strategy)
     else:
         model.load_state_dict(checkpoint['model_state_dict'])
-    
+
+    # ✅ UNFREEZE MODEL FOR STRATEGY C
+    if args.transfer_strategy == 'c':
+        for name, param in model.named_parameters():
+            if not param.requires_grad:
+                param.requires_grad = True
+                logging.debug(f"🔓 Unfroze parameter: {name}")
+        
     # STAGE 2: Graph-Level Pretraining
     logging.info("\n" + "=" * 80)
     logging.info("🔍 STAGE 2: Graph-Level Pretraining")
