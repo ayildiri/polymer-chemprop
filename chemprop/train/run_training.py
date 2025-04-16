@@ -217,6 +217,11 @@ def run_training(args: TrainArgs,
                 weights_only=False
             )
             model.load_state_dict(checkpoint['model_state_dict'])
+            # ✅ DEBUG: Confirm FFN weights loaded
+            print("✅ FFN weights after loading checkpoint:")
+            for name, param in model.named_parameters():
+                if "ffn" in name or "graph_head" in name:
+                    print(f"{name}: mean={param.data.mean():.4f}, std={param.data.std():.4f}")
             optimizer = build_optimizer(model, args)
             scheduler = build_lr_scheduler(optimizer, args)
             optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
@@ -234,13 +239,44 @@ def run_training(args: TrainArgs,
             optimizer = build_optimizer(model, args)
             scheduler = build_lr_scheduler(optimizer, args)
 
+        # ✅ Load SSL checkpoint if specified via --checkpoint_frzn
+        if args.checkpoint_frzn is not None:
+            debug(f'📥 Loading pretrained checkpoint from {args.checkpoint_frzn}')
+            checkpoint = torch.load(args.checkpoint_frzn, map_location=args.device)
+            model.load_state_dict(checkpoint['model_state_dict'], strict=False)
+
+        # ✅ Freeze encoder weights if --frzn_encoder
+        if getattr(args, 'frzn_encoder', False):
+            for name, param in model.encoder.named_parameters():
+                param.requires_grad = False
+                debug(f'❄️  Frozen encoder layer: {name}')
+
+        # ✅ Freeze graph_head layers if --frzn_ffn_layers > 0
+        if getattr(args, 'frzn_ffn_layers', 0) > 0:
+            if hasattr(model, 'graph_head'):
+                ffn_params = list(model.graph_head.parameters())
+            elif hasattr(model, 'ffn'):
+                ffn_params = list(model.ffn.parameters())
+            else:
+                raise AttributeError("Model has no graph_head or ffn attribute")
+
+            num_to_freeze = min(args.frzn_ffn_layers, len(ffn_params))
+            for i in range(-num_to_freeze, 0):
+                ffn_params[i].requires_grad = False
+                debug(f'❄️  Frozen FFN layer {i} with shape {ffn_params[i].shape}')
+
         debug(model)
         debug(f'Number of parameters = {param_count_all(model):,}')
 
         if args.cuda:
             debug('Moving model to cuda')
         model = model.to(args.device)
-
+        # ✅ DEBUG: Print frozen layers
+        print("✅ Frozen layers in the model:")
+        for name, param in model.named_parameters():
+            if not param.requires_grad:
+                print(f"❄️  {name}")
+                
         save_checkpoint(os.path.join(save_dir, MODEL_FILE_NAME), model, scaler,
                         features_scaler, atom_descriptor_scaler, bond_feature_scaler, args)
 
