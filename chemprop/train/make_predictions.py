@@ -153,11 +153,25 @@ def predict_and_save(args: PredictArgs, train_args: TrainArgs, test_data: Molecu
                 test_data.normalize_features(bond_feature_scaler, scale_bond_features=True)
 
         # Make predictions
-        model_preds = predict(
-            model=model,
-            data_loader=test_data_loader,
-            scaler=scaler
-        )
+        if args.save_graph_embeddings:
+            model_preds, model_graph_embeds = predict(
+                model=model,
+                data_loader=test_data_loader,
+                scaler=scaler,
+                return_embeddings=True
+            )
+            if index == 0:
+                all_graph_embeddings = model_graph_embeds
+            else:
+                all_graph_embeddings += model_graph_embeds  # sum across ensemble
+        else:
+            model_preds = predict(
+                model=model,
+                data_loader=test_data_loader,
+                scaler=scaler,
+                return_embeddings=False
+            )
+        
         if args.dataset_type == 'spectra':
             model_preds = normalize_spectra(
                 spectra=model_preds,
@@ -174,6 +188,11 @@ def predict_and_save(args: PredictArgs, train_args: TrainArgs, test_data: Molecu
 
     # Ensemble predictions
     avg_preds = sum_preds / len(args.checkpoint_paths)
+    # Save graph-level embeddings (averaged across ensemble)
+    if args.save_graph_embeddings:
+        avg_graph_embeds = all_graph_embeddings / len(args.checkpoint_paths)
+        print(f'Saving graph embeddings to {args.graph_embeddings_path}')
+        np.save(args.graph_embeddings_path, avg_graph_embeds)
 
     if args.ensemble_variance:
         if args.dataset_type == 'spectra':
