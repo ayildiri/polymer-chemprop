@@ -804,7 +804,8 @@ def main():
     smiles_list = df[SMILES_COL].astype(str).tolist()
     total_data = len(smiles_list)
     
-    # Handle data subsetting with more flexible format handling
+
+    # Modified data loading section for the pretrain_folds_file handling
     if args.pretrain_folds_file is not None:
         with open(args.pretrain_folds_file, "rb") as f:
             pretrain_data = pickle.load(f)
@@ -816,13 +817,14 @@ def main():
                 logging.info(f"✅ Detected index list format with {len(pretrain_data)} indices")
                 pretrain_indices = pretrain_data
                 smiles_list = [smiles_list[i] for i in pretrain_indices]
-            elif len(pretrain_data) == total_data and all(x is None or x in [0, 1] for x in pretrain_data):
-                # Format 2: List of 0/1 folds (0 = pretrain, 1 = unused)
-                logging.info(f"✅ Detected folds format with {pretrain_data.count(0)} pretrain samples")
+            elif len(pretrain_data) == total_data:
+                # Format 2: List of 0/1/None folds (0 = pretrain, 1 or None = unused)
+                # IMPORTANT: Only select indices where the value is EXACTLY 0
                 pretrain_indices = [i for i, fold in enumerate(pretrain_data) if fold == 0]
+                logging.info(f"✅ Detected folds format with {len(pretrain_indices)} pretrain samples")
                 smiles_list = [smiles_list[i] for i in pretrain_indices]
             else:
-                raise ValueError("Unrecognized format in pretrain_folds_file. Expected either a list of integer indices or a list of 0/1 folds.")
+                raise ValueError("Unrecognized format in pretrain_folds_file. Expected either a list of integer indices or a list of 0/1/None folds.")
         else:
             raise ValueError("Expected pretrain_folds_file to contain a list.")
         
