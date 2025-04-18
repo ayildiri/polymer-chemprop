@@ -251,6 +251,8 @@ class TrainArgs(CommonArgs):
     """Number of folds when performing cross validation."""
     folds_file: str = None
     """Optional file of fold labels."""
+    train_fold_index: int = None
+    """Which fold to use as train when using predetermined splits with grouped folds (e.g., fold 0 = 1% train)."""
     val_fold_index: int = None
     """Which fold to use as val for leave-one-out cross val."""
     test_fold_index: int = None
