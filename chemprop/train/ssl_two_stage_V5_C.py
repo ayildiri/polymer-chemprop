@@ -758,12 +758,14 @@ def main():
     # Handle data subsetting
     if args.pretrain_folds_file is not None:
         with open(args.pretrain_folds_file, "rb") as f:
-            folds = pickle.load(f)
-        if len(folds) != len(df):
-            raise ValueError(f"Length of pretrain_folds_file ({len(folds)}) does not match dataset ({len(df)}).")
-        pretrain_indices = [i for i, fold in enumerate(folds) if fold == 0]
+            pretrain_indices = pickle.load(f)
+        
+        if not isinstance(pretrain_indices, list) or not all(isinstance(i, int) for i in pretrain_indices):
+            raise ValueError("Expected pretrain_folds_file to be a list of integer indices.")
+        
         smiles_list = [smiles_list[i] for i in pretrain_indices]
-        logging.info(f"Using {len(smiles_list)} samples from pretrain_folds_file for SSL pretraining.")
+        logging.info(f"✅ Using {len(smiles_list)} samples from pretrain_folds_file for SSL pretraining.")
+
     elif args.pretrain_frac < 1.0:
         subset_size = int(total_data * args.pretrain_frac)
         subset_size = max(subset_size, 1)
