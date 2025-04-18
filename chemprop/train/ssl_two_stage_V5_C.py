@@ -812,21 +812,20 @@ def main():
         
         # Check the format of the loaded data and handle appropriately
         if isinstance(pretrain_data, list):
+            # ✅ Only accept list of integer indices (our preferred and strict format)
             if all(isinstance(i, int) for i in pretrain_data):
-                # Format 1: List of integer indices
-                logging.info(f"✅ Detected index list format with {len(pretrain_data)} indices")
                 pretrain_indices = pretrain_data
                 smiles_list = [smiles_list[i] for i in pretrain_indices]
-            elif len(pretrain_data) == total_data:
-                # Format 2: List of 0/1/None folds (0 = pretrain, 1 or None = unused)
-                # IMPORTANT: Only select indices where the value is EXACTLY 0
-                pretrain_indices = [i for i, fold in enumerate(pretrain_data) if fold == 0]
-                logging.info(f"✅ Detected folds format with {len(pretrain_indices)} pretrain samples")
-                smiles_list = [smiles_list[i] for i in pretrain_indices]
+                logging.info(f"✅ Using {len(smiles_list)} samples from pretrain_folds_file for SSL pretraining.")
+                logging.info(f"   This represents {len(smiles_list)/total_data:.2%} of the total dataset.")
             else:
-                raise ValueError("Unrecognized format in pretrain_folds_file. Expected either a list of integer indices or a list of 0/1/None folds.")
+                raise ValueError(
+                    "❌ pretrain_folds_file must be a list of integer indices (e.g., [0, 5, 8, ...]).\n"
+                    "    Detected an unsupported format (e.g., list of 0/1 flags or other)."
+                )
         else:
-            raise ValueError("Expected pretrain_folds_file to contain a list.")
+            raise ValueError("❌ pretrain_folds_file must be a pickled list of integer indices.")
+
         
         logging.info(f"✅ Using {len(smiles_list)} samples from pretrain_folds_file for SSL pretraining.")
         logging.info(f"   This represents {len(smiles_list)/total_data:.1%} of the total dataset.")
