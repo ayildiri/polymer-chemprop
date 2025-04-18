@@ -816,8 +816,6 @@ def main():
             if all(isinstance(i, int) for i in pretrain_data):
                 pretrain_indices = pretrain_data
                 smiles_list = [smiles_list[i] for i in pretrain_indices]
-                logging.info(f"✅ Using {len(smiles_list)} samples from pretrain_folds_file for SSL pretraining.")
-                logging.info(f"   This represents {len(smiles_list)/total_data:.2%} of the total dataset.")
             else:
                 raise ValueError(
                     "❌ pretrain_folds_file must be a list of integer indices (e.g., [0, 5, 8, ...]).\n"
@@ -825,8 +823,7 @@ def main():
                 )
         else:
             raise ValueError("❌ pretrain_folds_file must be a pickled list of integer indices.")
-
-        
+  
         logging.info(f"✅ Using {len(smiles_list)} samples from pretrain_folds_file for SSL pretraining.")
         logging.info(f"   This represents {len(smiles_list)/total_data:.1%} of the total dataset.")
 
