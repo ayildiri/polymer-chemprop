@@ -679,6 +679,55 @@ def run_pretraining_epoch(task, loader, device, optimizer=None, train=True, sche
     
     return avg_loss, avg_task_losses
 
+
+# ----- Additional utility function to help with verifying split data -----
+
+def analyze_pretrain_folds(pretrain_folds_file, total_count=None):
+    """
+    Analyze the format and content of a pretrain folds file.
+    
+    Args:
+        pretrain_folds_file: Path to the pretrain folds file
+        total_count: Total number of samples in the dataset (if known)
+        
+    Returns:
+        A dictionary with information about the folds
+    """
+    with open(pretrain_folds_file, "rb") as f:
+        data = pickle.load(f)
+        
+    if not isinstance(data, list):
+        return {"error": "Not a list"}
+    
+    # Check if it's a list of integers (indices)
+    if all(isinstance(x, int) for x in data):
+        return {
+            "format": "indices",
+            "count": len(data),
+            "percentage": len(data) / total_count if total_count else None,
+            "min_index": min(data) if data else None,
+            "max_index": max(data) if data else None
+        }
+    
+    # Check if it's a list of 0s and 1s (folds)
+    if total_count and len(data) == total_count and all(x is None or x in [0, 1] for x in data):
+        pretrain_count = data.count(0)
+        unused_count = data.count(1)
+        none_count = data.count(None)
+        
+        return {
+            "format": "folds",
+            "total_length": len(data),
+            "pretrain_count": pretrain_count,
+            "unused_count": unused_count,
+            "none_count": none_count,
+            "pretrain_percentage": pretrain_count / total_count if total_count else None
+        }
+        
+    return {"error": "Unknown format", "length": len(data)}
+
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_path', type=str, required=True, help='Path to CSV file with poly_chemprop_input column.')
@@ -755,16 +804,30 @@ def main():
     smiles_list = df[SMILES_COL].astype(str).tolist()
     total_data = len(smiles_list)
     
-    # Handle data subsetting
+    # Handle data subsetting with more flexible format handling
     if args.pretrain_folds_file is not None:
         with open(args.pretrain_folds_file, "rb") as f:
-            pretrain_indices = pickle.load(f)
+            pretrain_data = pickle.load(f)
         
-        if not isinstance(pretrain_indices, list) or not all(isinstance(i, int) for i in pretrain_indices):
-            raise ValueError("Expected pretrain_folds_file to be a list of integer indices.")
+        # Check the format of the loaded data and handle appropriately
+        if isinstance(pretrain_data, list):
+            if all(isinstance(i, int) for i in pretrain_data):
+                # Format 1: List of integer indices
+                logging.info(f"✅ Detected index list format with {len(pretrain_data)} indices")
+                pretrain_indices = pretrain_data
+                smiles_list = [smiles_list[i] for i in pretrain_indices]
+            elif len(pretrain_data) == total_data and all(x is None or x in [0, 1] for x in pretrain_data):
+                # Format 2: List of 0/1 folds (0 = pretrain, 1 = unused)
+                logging.info(f"✅ Detected folds format with {pretrain_data.count(0)} pretrain samples")
+                pretrain_indices = [i for i, fold in enumerate(pretrain_data) if fold == 0]
+                smiles_list = [smiles_list[i] for i in pretrain_indices]
+            else:
+                raise ValueError("Unrecognized format in pretrain_folds_file. Expected either a list of integer indices or a list of 0/1 folds.")
+        else:
+            raise ValueError("Expected pretrain_folds_file to contain a list.")
         
-        smiles_list = [smiles_list[i] for i in pretrain_indices]
         logging.info(f"✅ Using {len(smiles_list)} samples from pretrain_folds_file for SSL pretraining.")
+        logging.info(f"   This represents {len(smiles_list)/total_data:.1%} of the total dataset.")
 
     elif args.pretrain_frac < 1.0:
         subset_size = int(total_data * args.pretrain_frac)
