@@ -72,14 +72,20 @@ def run_training(args: TrainArgs,
                                              num_folds=args.num_folds,
                                              args=args,
                                              logger=logger)
-    else:
-        train_data, val_data, test_data = split_data(data=data,
-                                                     split_type=args.split_type,
-                                                     sizes=args.split_sizes,
-                                                     seed=args.seed,
-                                                     num_folds=args.num_folds,
-                                                     args=args,
-                                                     logger=logger)
+    elif args.split_type == 'predetermined' and args.folds_file is not None:
+        # Handle grouped folds with optional train_fold_index (default 0)
+        with open(args.folds_file, 'rb') as f:
+            folds = pickle.load(f)
+    
+        train_idx = folds[getattr(args, 'train_fold_index', 0)]  # default to 0 if not provided
+        val_idx = folds[args.val_fold_index]
+        test_idx = folds[args.test_fold_index]
+    
+        train_data = MoleculeDataset([data[i] for i in train_idx])
+        val_data = MoleculeDataset([data[i] for i in val_idx])
+        test_data = MoleculeDataset([data[i] for i in test_idx])
+    
+        debug(f"Using predetermined grouped folds: train={len(train_data)}, val={len(val_data)}, test={len(test_data)}")
 
     if args.dataset_type == 'classification':
         class_sizes = get_class_sizes(data)
