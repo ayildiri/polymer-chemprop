@@ -302,13 +302,8 @@ def run_training(args: TrainArgs,
 
         # Setup CSV logging
         csv_log_path = os.path.join(save_dir, 'train_val_loss_log.csv')
-        if args.resume_from_checkpoint is None:
-            write_header = True
-            with open(csv_log_path, 'w') as f:
-                f.write('epoch,train_loss,val_loss,' + ','.join(args.metrics) + '\n')
-        else:
-            write_header = False
-        
+        write_header = not os.path.exists(csv_log_path)
+
         for epoch in trange(start_epoch, args.epochs):
             debug(f'Epoch {epoch}')
             n_iter = train(
