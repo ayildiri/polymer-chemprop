@@ -59,8 +59,11 @@ def predict(model: MoleculeModel,
         preds.extend(batch_preds)
 
     if return_embeddings:
-        import numpy as np
-        graph_embeddings = np.concatenate(graph_embeddings, axis=0)
+        if len(graph_embeddings) > 0:
+            graph_embeddings = np.concatenate(graph_embeddings, axis=0)
+        else:
+            raise ValueError("No graph embeddings were collected. Possibly no valid batches?")
         return preds, graph_embeddings
     else:
         return preds
+
