@@ -36,7 +36,7 @@ def predict(model: MoleculeModel,
         # Make predictions
         with torch.no_grad():
             output = model(mol_batch, features_batch, atom_descriptors_batch,
-                           atom_features_batch, bond_features_batch)
+                           atom_features_batch, bond_features_batch,return_embeddings=return_embeddings)
 
             # ✅ If model returns both predictions and graph embeddings
             if return_embeddings:
