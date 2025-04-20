@@ -335,6 +335,9 @@ def run_training(args: TrainArgs,
             )
             if isinstance(scheduler, ExponentialLR):
                 scheduler.step()
+            elif isinstance(scheduler, torch.optim.lr_scheduler.CosineAnnealingLR) or \
+                 isinstance(scheduler, torch.optim.lr_scheduler.CyclicLR):
+                scheduler.step()
                 
             val_scores = evaluate(
                 model=model,
