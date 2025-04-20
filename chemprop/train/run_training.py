@@ -208,6 +208,26 @@ def run_training(args: TrainArgs,
     for model_idx in range(args.ensemble_size):
         save_dir = os.path.join(args.save_dir, f'model_{model_idx}')
         makedirs(save_dir)
+        
+        # ✅ Setup CSV logging path and header logic with integrity check
+        csv_log_path = os.path.join(save_dir, 'train_val_loss_log.csv')
+        write_header = False
+        
+        # Check if we should create header (only if not resuming AND header is missing or incorrect)
+        if args.resume_from_checkpoint is None:
+            expected_header_start = 'epoch,train_avg_'
+            try:
+                with open(csv_log_path, 'r') as f:
+                    first_line = f.readline().strip()
+                if not first_line.startswith(expected_header_start):
+                    write_header = True
+            except FileNotFoundError:
+                write_header = True
+        
+            if write_header:
+                with open(csv_log_path, 'w') as f:
+                    pass  # clear file for fresh run
+
         try:
             writer = SummaryWriter(log_dir=save_dir)
         except:
@@ -299,10 +319,6 @@ def run_training(args: TrainArgs,
 
         best_score = float('inf') if args.minimize_score else -float('inf')
         best_epoch, n_iter = 0, 0
-
-        # Setup CSV logging
-        csv_log_path = os.path.join(save_dir, 'train_val_loss_log.csv')
-        write_header = not os.path.exists(csv_log_path)
 
         for epoch in trange(start_epoch, args.epochs):
             debug(f'Epoch {epoch}')
