@@ -489,16 +489,49 @@ def build_lr_scheduler(optimizer: Optimizer, args: TrainArgs, total_epochs: List
     :param total_epochs: The total number of epochs for which the model will be run.
     :return: An initialized learning rate scheduler.
     """
-    # Learning rate scheduler
-    return NoamLR(
-        optimizer=optimizer,
-        warmup_epochs=[args.warmup_epochs],
-        total_epochs=total_epochs or [args.epochs] * args.num_lrs,
-        steps_per_epoch=args.train_data_size // args.batch_size,
-        init_lr=[args.init_lr],
-        max_lr=[args.max_lr],
-        final_lr=[args.final_lr]
-    )
+    # Get total epochs and steps per epoch
+    total_epochs = total_epochs or [args.epochs] * args.num_lrs
+    steps_per_epoch = args.train_data_size // args.batch_size
+    
+    # Choose scheduler based on args.scheduler parameter
+    if getattr(args, 'scheduler', 'noam') == 'noam':
+        return NoamLR(
+            optimizer=optimizer,
+            warmup_epochs=[args.warmup_epochs],
+            total_epochs=total_epochs,
+            steps_per_epoch=steps_per_epoch,
+            init_lr=[args.init_lr],
+            max_lr=[args.max_lr],
+            final_lr=[args.final_lr]
+        )
+    elif getattr(args, 'scheduler', 'noam') == 'constant':
+        return torch.optim.lr_scheduler.LambdaLR(optimizer, lambda _: 1)
+    elif getattr(args, 'scheduler', 'noam') == 'cosine':
+        return torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer,
+            T_max=total_epochs[0] * steps_per_epoch,
+            eta_min=args.final_lr
+        )
+    elif getattr(args, 'scheduler', 'noam') == 'cyclic':
+        return torch.optim.lr_scheduler.CyclicLR(
+            optimizer,
+            base_lr=args.init_lr,
+            max_lr=args.max_lr,
+            step_size_up=args.warmup_epochs * steps_per_epoch,
+            step_size_down=(total_epochs[0] - args.warmup_epochs) * steps_per_epoch,
+            cycle_momentum=False
+        )
+    else:
+        # Default to NoamLR for backward compatibility
+        return NoamLR(
+            optimizer=optimizer,
+            warmup_epochs=[args.warmup_epochs],
+            total_epochs=total_epochs,
+            steps_per_epoch=steps_per_epoch,
+            init_lr=[args.init_lr],
+            max_lr=[args.max_lr],
+            final_lr=[args.final_lr]
+        )
 
 
 def create_logger(name: str, save_dir: str = None, quiet: bool = False) -> logging.Logger:
