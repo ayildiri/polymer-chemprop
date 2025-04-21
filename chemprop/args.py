@@ -402,6 +402,8 @@ class TrainArgs(CommonArgs):
     """Final learning rate."""
     scheduler: Literal['noam', 'constant', 'cosine', 'cyclic'] = 'noam'
     """Learning rate scheduler to use."""
+    optimizer: Literal['adam', 'adamw'] = 'adam'
+    """Optimizer to use."""
     grad_clip: float = None
     """Maximum magnitude of gradient during training."""
     class_balance: bool = False
