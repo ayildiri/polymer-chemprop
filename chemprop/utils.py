@@ -190,19 +190,22 @@ def load_frzn_model(model: torch.nn,
     model_state_dict = model.state_dict()
     
     if loaded_args.number_of_molecules==1 & current_args.number_of_molecules==1:      
-        encoder_param_names = ['encoder.encoder.0.W_i.weight', 'encoder.encoder.0.W_h.weight', 'encoder.encoder.0.W_o.weight', 'encoder.encoder.0.W_o.bias']
-        if current_args.checkpoint_frzn is not None:
+    encoder_param_names = ['encoder.encoder.0.W_i.weight', 'encoder.encoder.0.W_h.weight', 'encoder.encoder.0.W_o.weight', 'encoder.encoder.0.W_o.bias']
+    
+        # Only freeze encoder if checkpoint_frzn is provided and frzn_encoder is True
+        if current_args.checkpoint_frzn is not None and getattr(current_args, 'frzn_encoder', False):
             # Freeze the MPNN
             for param_name in encoder_param_names:
-                model_state_dict = overwrite_state_dict(param_name,param_name,loaded_state_dict,model_state_dict)
-            
+                model_state_dict = overwrite_state_dict(param_name, param_name, loaded_state_dict, model_state_dict)
+        
+        # Handle FFN freezing separately
         if current_args.frzn_ffn_layers > 0:         
             ffn_param_names = [['ffn.'+str(i*3+1)+'.weight','ffn.'+str(i*3+1)+'.bias'] for i in range(current_args.frzn_ffn_layers)]
             ffn_param_names = [item for sublist in ffn_param_names for item in sublist]
             
-            # Freeze MPNN and FFN layers
-            for param_name in encoder_param_names+ffn_param_names:
-                model_state_dict = overwrite_state_dict(param_name,param_name,loaded_state_dict,model_state_dict)               
+            # Freeze only FFN layers
+            for param_name in ffn_param_names:
+                model_state_dict = overwrite_state_dict(param_name, param_name, loaded_state_dict, model_state_dict)              
             
         if current_args.freeze_first_only:
             debug(f'WARNING: --freeze_first_only flag cannot be used with number_of_molecules=1 (flag is ignored)')
