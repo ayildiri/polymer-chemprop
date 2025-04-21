@@ -168,6 +168,7 @@ def overwrite_state_dict(loaded_param_name: str,
     
     return model_state_dict
 
+
 def load_frzn_model(model: torch.nn,
                     path: str,
                     current_args: Namespace = None,
@@ -191,7 +192,7 @@ def load_frzn_model(model: torch.nn,
     
     if loaded_args.number_of_molecules==1 & current_args.number_of_molecules==1:      
         encoder_param_names = ['encoder.encoder.0.W_i.weight', 'encoder.encoder.0.W_h.weight', 'encoder.encoder.0.W_o.weight', 'encoder.encoder.0.W_o.bias']
-    
+        
         # Only freeze encoder if checkpoint_frzn is provided and frzn_encoder is True
         if current_args.checkpoint_frzn is not None and getattr(current_args, 'frzn_encoder', False):
             # Freeze the MPNN
