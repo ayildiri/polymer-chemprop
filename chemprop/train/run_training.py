@@ -335,8 +335,14 @@ def run_training(args: TrainArgs,
                 logger=logger,
                 writer=writer
             )
-            if isinstance(scheduler, ExponentialLR):
+            
+            # Only step per-epoch schedulers here (like ExponentialLR)
+            # CosineAnnealingLR, CyclicLR, and NoamLR are now stepped per batch
+            if isinstance(scheduler, ExponentialLR) and not (isinstance(scheduler, torch.optim.lr_scheduler.CosineAnnealingLR) or 
+                                      isinstance(scheduler, torch.optim.lr_scheduler.CyclicLR) or
+                                      isinstance(scheduler, NoamLR)):
                 scheduler.step()
+            
             elif isinstance(scheduler, torch.optim.lr_scheduler.CosineAnnealingLR) or \
                  isinstance(scheduler, torch.optim.lr_scheduler.CyclicLR):
                 scheduler.step()
