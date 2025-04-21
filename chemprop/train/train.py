@@ -25,22 +25,16 @@ def train(model: MoleculeModel,
           writer: SummaryWriter = None) -> int:
     """
     Trains a model for an epoch.
-
-    :param model: A :class:`~chemprop.models.model.MoleculeModel`.
-    :param data_loader: A :class:`~chemprop.data.data.MoleculeDataLoader`.
-    :param loss_func: Loss function.
-    :param optimizer: An optimizer.
-    :param scheduler: A learning rate scheduler.
-    :param args: A :class:`~chemprop.args.TrainArgs` object containing arguments for training the model.
-    :param n_iter: The number of iterations (training examples) trained on so far.
-    :param logger: A logger for recording output.
-    :param writer: A tensorboardX SummaryWriter.
-    :return: The total number of iterations (training examples) trained on so far.
     """
     debug = logger.debug if logger is not None else print
 
     model.train()
     loss_sum = iter_count = 0
+    
+    # Determine which schedulers need per-batch stepping
+    step_per_batch = isinstance(scheduler, NoamLR) or \
+                    isinstance(scheduler, torch.optim.lr_scheduler.CosineAnnealingLR) or \
+                    isinstance(scheduler, torch.optim.lr_scheduler.CyclicLR)
 
     for batch in tqdm(data_loader, total=len(data_loader), leave=False):
         # Prepare batch
@@ -87,14 +81,20 @@ def train(model: MoleculeModel,
             nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
         optimizer.step()
 
-        if isinstance(scheduler, NoamLR):
+        # Step scheduler per batch if needed
+        if step_per_batch:
             scheduler.step()
 
         n_iter += len(batch)
 
         # Log and/or add to tensorboard
         if (n_iter // args.batch_size) % args.log_frequency == 0:
-            lrs = scheduler.get_lr()
+            # Get learning rates - handle different scheduler types
+            if isinstance(scheduler, NoamLR):
+                lrs = scheduler.get_lr()
+            else:
+                lrs = scheduler.get_last_lr()
+                
             pnorm = compute_pnorm(model)
             gnorm = compute_gnorm(model)
             loss_avg = loss_sum / iter_count
