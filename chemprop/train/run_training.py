@@ -213,8 +213,14 @@ def run_training(args: TrainArgs,
         csv_log_path = os.path.join(save_dir, 'train_val_loss_log.csv')
         write_header = False
         
-        # Check if we should create header (only if not resuming AND header is missing or incorrect)
+        # Always create a fresh file if not resuming
         if args.resume_from_checkpoint is None:
+            # Completely clear the file for a fresh run
+            with open(csv_log_path, 'w') as f:
+                pass  # clear file for fresh run
+            write_header = True
+        else:
+            # Check if the header exists and is correct for resuming
             expected_header_start = 'epoch,train_avg_'
             try:
                 with open(csv_log_path, 'r') as f:
@@ -223,10 +229,6 @@ def run_training(args: TrainArgs,
                     write_header = True
             except FileNotFoundError:
                 write_header = True
-        
-            if write_header:
-                with open(csv_log_path, 'w') as f:
-                    pass  # clear file for fresh run
 
         try:
             writer = SummaryWriter(log_dir=save_dir)
