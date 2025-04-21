@@ -17,7 +17,7 @@ from sklearn.metrics import auc, mean_absolute_error, mean_squared_error, precis
     roc_auc_score, accuracy_score, log_loss
 import torch
 import torch.nn as nn
-from torch.optim import Adam, Optimizer
+from torch.optim import Adam, AdamW, Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 from tqdm import tqdm
 
