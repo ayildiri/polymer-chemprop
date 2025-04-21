@@ -288,6 +288,22 @@ def load_scalers(path: str) -> Tuple[StandardScaler, StandardScaler, StandardSca
 
     return scaler, features_scaler, atom_descriptor_scaler, bond_feature_scaler
 
+def build_optimizer(model: nn.Module, args: TrainArgs) -> Optimizer:
+    """
+    Builds a PyTorch Optimizer.
+
+    :param model: The model to optimize.
+    :param args: A :class:`~chemprop.args.TrainArgs` object containing optimizer arguments.
+    :return: An initialized Optimizer.
+    """
+    weight_decay = getattr(args, 'weight_decay', 0.0)
+    params = [{'params': model.parameters(), 'lr': args.init_lr, 'weight_decay': weight_decay}]
+
+    # Choose optimizer based on args
+    if getattr(args, 'optimizer', 'adam') == 'adamw':
+        return torch.optim.AdamW(params)
+    else:
+        return Adam(params)
 
 def load_args(path: str) -> TrainArgs:
     """
