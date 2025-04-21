@@ -190,7 +190,7 @@ def load_frzn_model(model: torch.nn,
     model_state_dict = model.state_dict()
     
     if loaded_args.number_of_molecules==1 & current_args.number_of_molecules==1:      
-    encoder_param_names = ['encoder.encoder.0.W_i.weight', 'encoder.encoder.0.W_h.weight', 'encoder.encoder.0.W_o.weight', 'encoder.encoder.0.W_o.bias']
+        encoder_param_names = ['encoder.encoder.0.W_i.weight', 'encoder.encoder.0.W_h.weight', 'encoder.encoder.0.W_o.weight', 'encoder.encoder.0.W_o.bias']
     
         # Only freeze encoder if checkpoint_frzn is provided and frzn_encoder is True
         if current_args.checkpoint_frzn is not None and getattr(current_args, 'frzn_encoder', False):
