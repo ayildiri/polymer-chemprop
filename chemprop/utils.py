@@ -483,19 +483,6 @@ def get_metric_func(metric: str) -> Callable[[Union[List[int], List[float]], Lis
     raise ValueError(f'Metric "{metric}" not supported.')
 
 
-def build_optimizer(model: nn.Module, args: TrainArgs) -> Optimizer:
-    """
-    Builds a PyTorch Optimizer.
-
-    :param model: The model to optimize.
-    :param args: A :class:`~chemprop.args.TrainArgs` object containing optimizer arguments.
-    :return: An initialized Optimizer.
-    """
-    params = [{'params': model.parameters(), 'lr': args.init_lr, 'weight_decay': 0}]
-
-    return Adam(params)
-
-
 def build_lr_scheduler(optimizer: Optimizer, args: TrainArgs, total_epochs: List[int] = None) -> _LRScheduler:
     """
     Builds a PyTorch learning rate scheduler.
