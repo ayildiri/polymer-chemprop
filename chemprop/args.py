@@ -404,6 +404,8 @@ class TrainArgs(CommonArgs):
     """Learning rate scheduler to use."""
     optimizer: Literal['adam', 'adamw'] = 'adam'
     """Optimizer to use."""
+    weight_decay: float = 0.0
+    """Weight decay coefficient for regularization."""
     grad_clip: float = None
     """Maximum magnitude of gradient during training."""
     class_balance: bool = False
